@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { Link } from 'wouter';
 import { useSessionList, send } from '../hooks/use-ws';
 import type { SessionState, SessionStatus } from '../../server/session/state';
+import { LauncherModal } from '../components/launcher';
 
 const statusColors: Record<SessionStatus, string> = {
   'starting': 'bg-blue-500/20 text-blue-300 ring-blue-500/30',
@@ -21,13 +23,6 @@ function relativeTime(ts: number): string {
   if (Math.abs(minutes) < 60) return rel.format(minutes, 'minute');
   const hours = Math.round(minutes / 60);
   return rel.format(hours, 'hour');
-}
-
-function quickLaunch(): void {
-  const cwd = window.prompt('cwd to start claude in:');
-  if (!cwd) return;
-  const prompt = window.prompt('initial prompt (optional):') ?? undefined;
-  send({ type: 'client.launch', payload: { cwd, prompt: prompt || undefined } });
 }
 
 function SessionCard({ s }: { s: SessionState }) {
@@ -62,12 +57,14 @@ function SessionCard({ s }: { s: SessionState }) {
 
 export default function DashboardPage() {
   const sessions = useSessionList();
+  const [launcherOpen, setLauncherOpen] = useState(false);
+
   return (
     <div className="h-full overflow-auto p-6">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-lg font-semibold">Sessions</h1>
         <button
-          onClick={quickLaunch}
+          onClick={() => setLauncherOpen(true)}
           className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium hover:bg-blue-500"
         >
           New session
@@ -82,6 +79,7 @@ export default function DashboardPage() {
           {sessions.map((s) => <SessionCard key={s.sessionId} s={s} />)}
         </div>
       )}
+      {launcherOpen && <LauncherModal onClose={() => setLauncherOpen(false)} />}
     </div>
   );
 }

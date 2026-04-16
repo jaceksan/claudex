@@ -5,6 +5,7 @@ import type { SessionState } from '../../server/session/state';
 import type { StreamEvent } from '../../server/stream-json/types';
 import { EventView } from '../components/event-view';
 import { BashPane } from '../components/bash-pane';
+import { Composer } from '../components/composer';
 
 export default function SessionPage({ id }: { id: string }) {
   const [state, setState] = useState<SessionState | null>(null);
@@ -58,6 +59,7 @@ export default function SessionPage({ id }: { id: string }) {
           {events.map((ev, i) => <EventView key={i} event={ev} />)}
         </div>
       </div>
+      <Composer sessionId={id} disabled={state.status === 'ended' || state.status === 'crashed'} />
       <BashPane events={events} />
     </div>
   );
