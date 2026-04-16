@@ -1,6 +1,7 @@
 import { Route, Link } from 'wouter';
 import DashboardPage from './pages/dashboard';
 import SessionPage from './pages/session';
+import { Toaster } from './components/toaster';
 
 export default function App() {
   return (
@@ -13,6 +14,7 @@ export default function App() {
         <Route path="/" component={DashboardPage} />
         <Route path="/session/:id">{(params) => <SessionPage id={params.id} />}</Route>
       </main>
+      <Toaster />
     </div>
   );
 }
