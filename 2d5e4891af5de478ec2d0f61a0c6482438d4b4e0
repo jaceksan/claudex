@@ -1,0 +1,27 @@
+src/web/pages/session.tsx
+  fc742e1a06a3e927 7,61
+src/web/components/bash-pane.tsx
+  fc742e1a06a3e927 1-118
+package.json
+  fc742e1a06a3e927 22-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "2d5e4891af5de478ec2d0f61a0c6482438d4b4e0",
+  "prompts": {
+    "fc742e1a06a3e927": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aab6a28d-f715-43a2-9170-8c1742cee733",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 122,
+      "total_deletions": 0,
+      "accepted_lines": 234,
+      "overriden_lines": 0
+    }
+  }
+}
