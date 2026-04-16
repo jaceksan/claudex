@@ -23,3 +23,31 @@ describe('SessionState', () => {
     expect(s.lastActivityAt).toBeTypeOf('number');
   });
 });
+
+describe('reduce', () => {
+  it('system:init transitions to running and adopts session_id', () => {
+    const s0 = initialState('pending', '/tmp');
+    const s1 = reduce(s0, {
+      type: 'system',
+      subtype: 'init',
+      session_id: 'real-id',
+      cwd: '/tmp',
+    });
+    expect(s1.status).toBe('running');
+    expect(s1.sessionId).toBe('real-id');
+  });
+
+  it('assistant text event updates lastAssistantText', () => {
+    const s0 = { ...initialState('s', '/tmp'), status: 'running' as const };
+    const s1 = reduce(s0, {
+      type: 'assistant',
+      session_id: 's',
+      message: {
+        id: 'm1',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Hello world' }],
+      },
+    });
+    expect(s1.lastAssistantText).toBe('Hello world');
+  });
+});
