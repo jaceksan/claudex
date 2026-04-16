@@ -42,7 +42,9 @@ export class SessionManager extends EventEmitter {
   }
 
   create(opts: CreateSessionOpts): SessionHandle {
-    const localId = randomUUID(); // placeholder until system:init provides real id
+    // When resuming, reuse the existing session id as the UI id so the card/URL stays stable.
+    // Otherwise mint a new UUID placeholder.
+    const localId = opts.resumeSessionId ?? randomUUID();
     const ring: StreamEvent[] = [];
     const ringSize = this.opts.ringSize ?? 500;
     const processOpts: SessionProcessOptions = {
@@ -55,7 +57,10 @@ export class SessionManager extends EventEmitter {
     const proc = new SessionProcess(processOpts);
     const handle = Object.assign(new EventEmitter(), {
       id: localId,
-      state: initialState(localId, opts.cwd),
+      state: {
+        ...initialState(localId, opts.cwd),
+        claudeSessionId: opts.resumeSessionId ?? null,
+      },
       eventLog: ring,
       process: proc,
       send(text: string) { proc.sendUserMessage(text); },

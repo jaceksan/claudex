@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'wouter';
 import { useSessionList, send } from '../hooks/use-ws';
+import { useGitInfo } from '../hooks/use-git-info';
 import type { SessionState, SessionStatus } from '../../server/session/state';
 import { LauncherModal } from '../components/launcher';
+import { GitBadge } from '../components/git-badge';
 
 const statusColors: Record<SessionStatus, string> = {
   'starting': 'bg-blue-500/20 text-blue-300 ring-blue-500/30',
@@ -26,6 +28,7 @@ function relativeTime(ts: number): string {
 }
 
 function SessionCard({ s }: { s: SessionState }) {
+  const git = useGitInfo(s.sessionId, 15_000);
   return (
     <Link href={`/session/${s.sessionId}`}>
       <div className="cursor-pointer rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 hover:border-zinc-600 transition">
@@ -38,6 +41,7 @@ function SessionCard({ s }: { s: SessionState }) {
         <div className="mt-2 max-w-xs truncate font-mono text-sm text-zinc-300" title={s.cwd}>
           {s.cwd}
         </div>
+        {git?.isRepo && <div className="mt-1"><GitBadge info={git} compact /></div>}
         <div className="mt-3 grid grid-cols-2 gap-x-2 gap-y-1 text-xs text-zinc-400">
           <div>Tool: <span className="text-zinc-200">{s.currentTool?.name ?? '—'}</span></div>
           <div>Cost: <span className="text-zinc-200">${s.costUsd.toFixed(4)}</span></div>

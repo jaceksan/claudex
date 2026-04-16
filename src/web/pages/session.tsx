@@ -10,6 +10,8 @@ import type { SessionState } from '../../server/session/state';
 import type { StreamEvent } from '../../server/stream-json/types';
 import { EventView } from '../components/event-view';
 import { Composer } from '../components/composer';
+import { GitBadge } from '../components/git-badge';
+import { useGitInfo } from '../hooks/use-git-info';
 
 function handleStream(ev: StreamEvent, buf: string): string {
   if (ev.type !== 'stream_event') return buf;
@@ -69,12 +71,14 @@ export default function SessionPage({ id }: { id: string }) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [events.length, streaming]);
 
+  const git = useGitInfo(state?.sessionId, 10_000);
   const headerInfo = state ? (
     <>
       <div className="font-mono text-sm text-zinc-300 truncate max-w-md" title={state.cwd}>{state.cwd}</div>
       <div className="text-xs text-zinc-500">
         {state.status} · ${state.costUsd.toFixed(4)} · {state.tokens.input}/{state.tokens.output} tokens · {state.completedTools} tools
       </div>
+      {git?.isRepo && <div className="mt-1"><GitBadge info={git} /></div>}
     </>
   ) : (
     <div className="text-xs text-zinc-500">Waiting for session {id.slice(0, 8)}…</div>
