@@ -1,0 +1,23 @@
+src/server/session/manager.ts
+  fc742e1a06a3e927 70-82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "f1d185b5dd1adf2505bb87804ed7d213efa8ea1f",
+  "prompts": {
+    "fc742e1a06a3e927": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aab6a28d-f715-43a2-9170-8c1742cee733",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 14,
+      "total_deletions": 11,
+      "accepted_lines": 156,
+      "overriden_lines": 0
+    }
+  }
+}
