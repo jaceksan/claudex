@@ -1,9 +1,19 @@
+import { useEffect } from 'react';
 import { Route, Link } from 'wouter';
 import DashboardPage from './pages/dashboard';
 import SessionPage from './pages/session';
 import { Toaster } from './components/toaster';
+import { useSessionList } from './hooks/use-ws';
 
 export default function App() {
+  const sessions = useSessionList();
+  const running = sessions.filter(
+    (s) => s.status === 'running' || s.status === 'starting' || s.status === 'waiting-permission',
+  ).length;
+  useEffect(() => {
+    document.title = running > 0 ? `(${running}) Claudex` : 'Claudex';
+  }, [running]);
+
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-4 border-b border-zinc-800 px-4 py-2">
