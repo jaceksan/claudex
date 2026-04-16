@@ -1,28 +1,55 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'wouter';
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
 import { send, subscribe } from '../lib/ws';
 import { useSessionList } from '../hooks/use-ws';
 import type { ServerEnvelope } from '../../server/ws/envelope';
 import type { SessionState } from '../../server/session/state';
 import type { StreamEvent } from '../../server/stream-json/types';
 import { EventView } from '../components/event-view';
-import { BashPane } from '../components/bash-pane';
 import { Composer } from '../components/composer';
+
+function handleStream(ev: StreamEvent, buf: string): string {
+  if (ev.type !== 'stream_event') return buf;
+  const inner = ev.event;
+  if (inner.type === 'content_block_start') return '';
+  if (inner.type === 'message_start') return '';
+  if (inner.type === 'content_block_delta') {
+    const d = inner.delta;
+    if (d?.type === 'text_delta' && typeof d.text === 'string') return buf + d.text;
+    if (d?.type === 'thinking_delta' && typeof d.thinking === 'string') return buf + d.thinking;
+  }
+  return buf;
+}
 
 export default function SessionPage({ id }: { id: string }) {
   const [state, setState] = useState<SessionState | null>(null);
   const [events, setEvents] = useState<StreamEvent[]>([]);
+  const [streaming, setStreaming] = useState<string>('');
   const sessions = useSessionList();
   const [, navigate] = useLocation();
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    setStreaming('');
     send({ type: 'client.subscribe', payload: { sessionId: id } });
     const off = subscribe((env: ServerEnvelope) => {
       if (env.type === 'session.replay' && env.payload.state.sessionId === id) {
         setState(env.payload.state);
         setEvents(env.payload.events);
+        setStreaming('');
       } else if (env.type === 'session.event' && env.payload.sessionId === id) {
-        setEvents((prev) => [...prev, env.payload.event]);
+        const ev = env.payload.event;
+        if (ev.type === 'stream_event') {
+          setStreaming((prev) => handleStream(ev, prev));
+        } else {
+          if (ev.type === 'assistant' || ev.type === 'user' || ev.type === 'result') {
+            setStreaming('');
+          }
+          setEvents((prev) => [...prev, ev]);
+        }
       } else if (
         (env.type === 'session.updated' || env.type === 'session.ended' || env.type === 'session.created')
         && env.payload.state.sessionId === id
@@ -37,6 +64,10 @@ export default function SessionPage({ id }: { id: string }) {
       off();
     };
   }, [id]);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+  }, [events.length, streaming]);
 
   const headerInfo = state ? (
     <>
@@ -106,13 +137,21 @@ export default function SessionPage({ id }: { id: string }) {
             </div>
           )}
         </div>
-        <div className="flex-1 overflow-auto p-6">
+        <div ref={scrollRef} className="flex-1 overflow-auto px-6 py-4">
           {state ? (
-            <div className="space-y-4">
-              {events.length === 0 ? (
+            <div className="space-y-2">
+              {events.length === 0 && !streaming ? (
                 <div className="text-zinc-500">No events yet — the session is still starting.</div>
               ) : (
                 events.map((ev, i) => <EventView key={i} event={ev} />)
+              )}
+              {streaming && (
+                <div className="rounded border border-blue-500/30 bg-blue-950/10 px-3 py-2">
+                  <div className="prose prose-invert prose-sm max-w-none">
+                    <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>{streaming}</Markdown>
+                  </div>
+                  <div className="mt-1 text-[10px] uppercase tracking-wide text-blue-400/70">streaming…</div>
+                </div>
               )}
             </div>
           ) : (
@@ -120,10 +159,7 @@ export default function SessionPage({ id }: { id: string }) {
           )}
         </div>
         {state && (
-          <>
-            <Composer sessionId={id} disabled={state.status === 'ended' || state.status === 'crashed' || state.status === 'detached'} />
-            <BashPane events={events} />
-          </>
+          <Composer sessionId={id} disabled={state.status === 'ended' || state.status === 'crashed' || state.status === 'detached'} />
         )}
       </div>
     </div>

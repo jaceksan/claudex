@@ -13,22 +13,30 @@ function Collapsible({ summary, children, defaultOpen = false }: { summary: Reac
     <div className="rounded border border-zinc-800 bg-zinc-900/60">
       <button
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-zinc-800/60"
+        className="flex w-full items-center gap-2 px-2 py-1 text-left text-xs hover:bg-zinc-800/60"
       >
         <span className="text-zinc-500">{open ? '▼' : '▶'}</span>
         {summary}
       </button>
-      {open && <div className="border-t border-zinc-800 p-3">{children}</div>}
+      {open && <div className="border-t border-zinc-800 p-2">{children}</div>}
     </div>
   );
+}
+
+function summaryForTool(block: ToolUseBlock): string {
+  const i = block.input;
+  if (block.name === 'Bash') return String(i.command ?? '').slice(0, 120);
+  if (block.name === 'Read' || block.name === 'Edit' || block.name === 'Write') return String(i.file_path ?? '');
+  if (block.name === 'Glob' || block.name === 'Grep') return String(i.pattern ?? '');
+  return '';
 }
 
 function ToolUseView({ block }: { block: ToolUseBlock }) {
   if (block.name === 'ExitPlanMode') {
     const plan = (block.input.plan as string) ?? '';
     return (
-      <div className="rounded border-l-4 border-purple-500 bg-purple-950/20 p-4">
-        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-purple-300">Plan</div>
+      <div className="rounded border-l-4 border-purple-500 bg-purple-950/20 p-3">
+        <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-purple-300">Plan</div>
         <div className="prose prose-invert prose-sm max-w-none">
           <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>{plan}</Markdown>
         </div>
@@ -41,7 +49,7 @@ function ToolUseView({ block }: { block: ToolUseBlock }) {
     const newStr = (block.input.new_string as string) ?? '';
     const filePath = (block.input.file_path as string) ?? '';
     return (
-      <Collapsible summary={<span><span className="text-zinc-400">Edit</span> <span className="font-mono text-xs text-zinc-500">{filePath}</span></span>}>
+      <Collapsible summary={<><span className="text-amber-400">Edit</span> <span className="font-mono text-zinc-400">{filePath}</span></>}>
         <ReactDiffViewer oldValue={oldStr} newValue={newStr} splitView useDarkTheme hideLineNumbers={false} />
       </Collapsible>
     );
@@ -51,45 +59,54 @@ function ToolUseView({ block }: { block: ToolUseBlock }) {
     const content = (block.input.content as string) ?? '';
     const filePath = (block.input.file_path as string) ?? '';
     return (
-      <Collapsible summary={<span><span className="text-zinc-400">Write</span> <span className="font-mono text-xs text-zinc-500">{filePath}</span></span>}>
+      <Collapsible summary={<><span className="text-amber-400">Write</span> <span className="font-mono text-zinc-400">{filePath}</span></>}>
         <ReactDiffViewer oldValue="" newValue={content} splitView={false} useDarkTheme />
       </Collapsible>
     );
   }
 
+  const summary = summaryForTool(block);
   return (
-    <Collapsible summary={<span><span className="text-blue-400">{block.name}</span></span>}>
-      <pre className="overflow-auto text-xs text-zinc-300">{JSON.stringify(block.input, null, 2)}</pre>
+    <Collapsible summary={<><span className="text-amber-400">{block.name}</span> {summary && <span className="font-mono text-zinc-400 truncate">{summary}</span>}</>}>
+      <pre className="overflow-auto whitespace-pre-wrap text-xs text-zinc-300">{JSON.stringify(block.input, null, 2)}</pre>
     </Collapsible>
   );
 }
 
 function ToolResultView({ block }: { block: ToolResultBlock }) {
   const text = typeof block.content === 'string' ? block.content : JSON.stringify(block.content, null, 2);
+  const short = text.length <= 400 && text.split('\n').length <= 8;
   const border = block.is_error ? 'border-red-500/70' : 'border-zinc-700';
-  return (
-    <Collapsible summary={
-      <span className={block.is_error ? 'text-red-400' : 'text-zinc-400'}>
-        tool result {block.is_error ? '(error)' : ''}
-      </span>
-    }>
-      <pre className={`overflow-auto max-h-96 whitespace-pre-wrap text-xs ${block.is_error ? 'text-red-300' : 'text-zinc-200'} rounded border ${border} p-2`}>
-        {text}
+  const textColor = block.is_error ? 'text-red-300' : 'text-zinc-300';
+
+  if (short) {
+    return (
+      <pre className={`overflow-auto whitespace-pre-wrap rounded border ${border} bg-zinc-950/60 px-2 py-1 text-xs ${textColor}`}>
+        {text || <span className="italic text-zinc-500">(empty)</span>}
       </pre>
+    );
+  }
+
+  return (
+    <Collapsible summary={<span className={block.is_error ? 'text-red-400' : 'text-zinc-500'}>{block.is_error ? 'result (error)' : 'result'} · {text.split('\n').length} lines</span>}>
+      <pre className={`overflow-auto max-h-96 whitespace-pre-wrap text-xs ${textColor}`}>{text}</pre>
     </Collapsible>
   );
 }
 
 export function EventView({ event }: { event: StreamEvent }) {
-  if (event.type === 'system') {
-    return <div className="text-xs text-zinc-500">system: {event.subtype} ({event.session_id.slice(0, 8)})</div>;
-  }
+  // Don't render streaming delta events — they're collapsed into the live streaming buffer in SessionPage.
+  if (event.type === 'stream_event') return null;
+
+  // Skip system events entirely — they're noise for the activity feed.
+  if (event.type === 'system') return null;
 
   if (event.type === 'assistant') {
     return (
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {event.message.content.map((block, i) => {
           if (block.type === 'text') {
+            if (!block.text.trim()) return null;
             return (
               <div key={i} className="prose prose-invert prose-sm max-w-none">
                 <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>{block.text}</Markdown>
@@ -107,11 +124,22 @@ export function EventView({ event }: { event: StreamEvent }) {
 
   if (event.type === 'user') {
     const content = Array.isArray(event.message.content) ? event.message.content : [{ type: 'text' as const, text: event.message.content }];
+    // Filter out text blocks that are empty and tool_result-only user messages render tightly.
+    const blocks = content.filter((b) => {
+      if (typeof b !== 'object') return false;
+      if (b.type === 'text') return Boolean((b.text ?? '').trim());
+      return true;
+    });
+    if (blocks.length === 0) return null;
     return (
-      <div className="space-y-2">
-        {content.map((block, i) => {
+      <div className="space-y-1.5">
+        {blocks.map((block, i) => {
           if (block.type === 'text') {
-            return <div key={i} className="rounded bg-zinc-800/40 p-2 text-sm text-zinc-200">{block.text}</div>;
+            return (
+              <div key={i} className="rounded border-l-2 border-blue-500/60 bg-blue-950/10 px-3 py-1.5 text-sm text-zinc-200 whitespace-pre-wrap">
+                {block.text}
+              </div>
+            );
           }
           if (block.type === 'tool_result') {
             return <ToolResultView key={i} block={block} />;
@@ -125,8 +153,9 @@ export function EventView({ event }: { event: StreamEvent }) {
   if (event.type === 'result') {
     const ok = !event.is_error;
     return (
-      <div className={`rounded border px-3 py-2 text-sm ${ok ? 'border-zinc-700 text-zinc-300' : 'border-red-500/40 text-red-300'}`}>
-        Session {ok ? 'finished' : 'crashed'} · {event.subtype} · ${(event.total_cost_usd ?? 0).toFixed(4)}
+      <div className={`rounded border px-2 py-1 text-xs ${ok ? 'border-zinc-800 text-zinc-500' : 'border-red-500/40 text-red-300'}`}>
+        turn {ok ? 'finished' : 'crashed'} · ${(event.total_cost_usd ?? 0).toFixed(4)}
+        {event.duration_ms !== undefined && ` · ${(event.duration_ms / 1000).toFixed(1)}s`}
       </div>
     );
   }

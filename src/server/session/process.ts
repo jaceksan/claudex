@@ -94,7 +94,14 @@ export class SessionProcess extends EventEmitter {
 
   private buildDefaultArgs(): string[] {
     // Canonical multi-turn headless invocation. The initial prompt is sent over stdin in start().
-    const args = ['-p', '--output-format', 'stream-json', '--input-format', 'stream-json', '--verbose'];
+    // --include-partial-messages emits content_block_delta events for live streaming.
+    const args = [
+      '-p',
+      '--output-format', 'stream-json',
+      '--input-format', 'stream-json',
+      '--verbose',
+      '--include-partial-messages',
+    ];
     if (this.opts.permissionMode) args.push('--permission-mode', this.opts.permissionMode);
     if (this.opts.resumeSessionId) args.push('--resume', this.opts.resumeSessionId);
     return args;

@@ -41,11 +41,31 @@ export interface ResultEvent {
   result?: string;
 }
 
+export interface PartialMessageEvent {
+  type: 'stream_event';
+  session_id: string;
+  event: {
+    type: string; // 'message_start' | 'content_block_start' | 'content_block_delta' | 'content_block_stop' | 'message_delta' | 'message_stop'
+    index?: number;
+    delta?: {
+      type?: string;
+      text?: string;
+      thinking?: string;
+      partial_json?: string;
+    };
+    content_block?: {
+      type?: string;
+      name?: string;
+    };
+  };
+}
+
 export type StreamEvent =
   | SystemInitEvent
   | AssistantEvent
   | UserEvent
-  | ResultEvent;
+  | ResultEvent
+  | PartialMessageEvent;
 
 export type ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock;
 
