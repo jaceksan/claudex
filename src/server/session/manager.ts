@@ -63,6 +63,7 @@ export class SessionManager extends EventEmitter {
       state: {
         ...initialState(localId, opts.cwd),
         claudeSessionId: opts.resumeSessionId ?? null,
+        title: opts.label?.trim() || null,
       },
       eventLog: ring,
       process: proc,

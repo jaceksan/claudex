@@ -15,6 +15,7 @@ function saveRecent(cwd: string): void {
 
 export function LauncherModal({ onClose }: { onClose: () => void }) {
   const [cwd, setCwd] = useState('');
+  const [title, setTitle] = useState('');
   const [prompt, setPrompt] = useState('');
   const [mode, setMode] = useState<typeof MODES[number]>('default');
   const [recent, setRecent] = useState<string[]>([]);
@@ -30,6 +31,7 @@ export function LauncherModal({ onClose }: { onClose: () => void }) {
         cwd: cwd.trim(),
         prompt: prompt.trim() || undefined,
         permissionMode: mode === 'default' ? undefined : mode,
+        label: title.trim() || undefined,
       },
     });
     onClose();
@@ -54,6 +56,17 @@ export function LauncherModal({ onClose }: { onClose: () => void }) {
           <datalist id="recent-cwds">
             {recent.map((r) => <option key={r} value={r} />)}
           </datalist>
+        </label>
+
+        <label className="mt-4 block text-sm">
+          <span className="text-zinc-300">Title (optional)</span>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Short label shown in the dashboard and sidebar"
+            className="mt-1 w-full rounded bg-zinc-800 px-3 py-2 text-sm outline-none ring-1 ring-zinc-700 focus:ring-blue-500"
+          />
         </label>
 
         <label className="mt-4 block text-sm">

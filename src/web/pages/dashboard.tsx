@@ -29,8 +29,15 @@ function SessionCard({ s }: { s: SessionState }) {
           </span>
           <span className="text-xs text-zinc-500">{relativeTime(s.lastActivityAt)}</span>
         </div>
-        <div className="mt-2 max-w-xs truncate font-mono text-sm text-zinc-300" title={s.cwd}>
-          {s.cwd}
+        <div className="mt-2 min-w-0">
+          {s.title ? (
+            <>
+              <div className="truncate text-sm font-semibold text-zinc-100" title={s.title}>{s.title}</div>
+              <div className="truncate font-mono text-xs text-zinc-500" title={s.cwd}>{s.cwd}</div>
+            </>
+          ) : (
+            <div className="truncate font-mono text-sm text-zinc-300" title={s.cwd}>{s.cwd}</div>
+          )}
         </div>
         {git?.isRepo && <div className="mt-1"><GitBadge info={git} compact /></div>}
         <div className="mt-3 grid grid-cols-2 gap-x-2 gap-y-1 text-xs text-zinc-400">

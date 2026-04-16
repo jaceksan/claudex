@@ -107,9 +107,34 @@ export default function SessionPage({ id }: { id: string }) {
   const git = useGitInfo(state?.sessionId, 10_000);
   const copy = (text: string) => { navigator.clipboard?.writeText(text).catch(() => {}); };
   const claudeId = state?.claudeSessionId;
+  const rename = () => {
+    if (!state) return;
+    const next = window.prompt('Session title (leave empty to clear):', state.title ?? '');
+    if (next === null) return; // cancelled
+    send({ type: 'client.rename', payload: { sessionId: id, title: next.trim() || null } });
+  };
   const headerInfo = state ? (
     <>
-      <div className="font-mono text-sm text-zinc-300 truncate max-w-md" title={state.cwd}>{state.cwd}</div>
+      <div className="flex items-center gap-2 min-w-0">
+        {state.title ? (
+          <button
+            onClick={rename}
+            className="truncate max-w-md text-sm font-semibold text-zinc-100 hover:text-blue-300"
+            title="Click to rename"
+          >
+            {state.title}
+          </button>
+        ) : (
+          <button
+            onClick={rename}
+            className="text-xs text-zinc-500 hover:text-blue-300"
+            title="Click to set a title"
+          >
+            + title
+          </button>
+        )}
+      </div>
+      <div className="font-mono text-xs text-zinc-400 truncate max-w-md" title={state.cwd}>{state.cwd}</div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-zinc-500">
         <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset ${statusColors[state.status]}`}>
           {isBusy(state.status) && (
@@ -161,7 +186,11 @@ export default function SessionPage({ id }: { id: string }) {
                 href={`/session/${s.sessionId}`}
                 className={`block px-3 py-2 text-xs hover:bg-zinc-800 ${s.sessionId === id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400'}`}
               >
-                <div className="truncate font-mono" title={s.cwd}>{s.cwd}</div>
+                {s.title ? (
+                  <div className="truncate font-medium" title={s.cwd}>{s.title}</div>
+                ) : (
+                  <div className="truncate font-mono" title={s.cwd}>{s.cwd.split('/').pop() || s.cwd}</div>
+                )}
                 <div className="text-[10px] text-zinc-500">{s.status}</div>
               </Link>
             </li>
