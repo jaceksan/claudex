@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import path from 'node:path';
 
 export default defineConfig({
@@ -12,5 +13,5 @@ export default defineConfig({
       '/ws': { target: 'ws://localhost:7878', ws: true },
     },
   },
-  plugins: [react()],
+  plugins: [tailwindcss(), react()],
 });
