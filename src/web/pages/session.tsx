@@ -72,11 +72,39 @@ export default function SessionPage({ id }: { id: string }) {
   }, [events.length, streaming]);
 
   const git = useGitInfo(state?.sessionId, 10_000);
+  const copy = (text: string) => { navigator.clipboard?.writeText(text).catch(() => {}); };
+  const claudeId = state?.claudeSessionId;
   const headerInfo = state ? (
     <>
       <div className="font-mono text-sm text-zinc-300 truncate max-w-md" title={state.cwd}>{state.cwd}</div>
-      <div className="text-xs text-zinc-500">
-        {state.status} · ${state.costUsd.toFixed(4)} · {state.tokens.input}/{state.tokens.output} tokens · {state.completedTools} tools
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-zinc-500">
+        <span>{state.status}</span>
+        <span>·</span>
+        <span>${state.costUsd.toFixed(4)}</span>
+        <span>·</span>
+        <span>{state.tokens.input}/{state.tokens.output} tokens</span>
+        <span>·</span>
+        <span>{state.completedTools} tools</span>
+        <span>·</span>
+        <button
+          onClick={() => copy(state.sessionId)}
+          className="font-mono text-zinc-400 hover:text-zinc-100"
+          title={`UI id: ${state.sessionId} (click to copy)`}
+        >
+          ui:{state.sessionId.slice(0, 8)}
+        </button>
+        {claudeId && (
+          <>
+            <span>·</span>
+            <button
+              onClick={() => copy(claudeId)}
+              className="font-mono text-zinc-400 hover:text-zinc-100"
+              title={`Claude session id: ${claudeId} (click to copy — find transcript at ~/.claude/projects/…/${claudeId}.jsonl)`}
+            >
+              claude:{claudeId.slice(0, 8)}
+            </button>
+          </>
+        )}
       </div>
       {git?.isRepo && <div className="mt-1"><GitBadge info={git} /></div>}
     </>
