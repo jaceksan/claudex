@@ -99,6 +99,7 @@ export class SessionManager extends EventEmitter {
       handle.emit('stateChange', handle.state);
     });
     proc.on('exit', (code) => {
+      if (!this.sessions.has(handle.id)) return; // deleted — skip noisy 'crashed' broadcast
       if (handle.state.status !== 'ended' && handle.state.status !== 'crashed') {
         handle.state = {
           ...handle.state,
@@ -110,6 +111,7 @@ export class SessionManager extends EventEmitter {
       this.emit('ended', handle);
     });
     proc.on('error', (err) => {
+      if (!this.sessions.has(handle.id)) return;
       handle.state = { ...handle.state, status: 'crashed', error: err.message };
       handle.emit('ended', handle.state);
       this.emit('ended', handle);
@@ -155,9 +157,12 @@ export class SessionManager extends EventEmitter {
   delete(id: string): void {
     const h = this.sessions.get(id);
     if (!h) return;
-    try { h.kill(); } catch { /* ignore */ }
+    // Remove from the map and broadcast 'deleted' before killing so the exit listener
+    // (which fires async) sees no entry and skips the 'crashed' broadcast that would
+    // otherwise flicker into the dashboard before the row disappears.
     this.sessions.delete(id);
     this.emit('deleted', id);
+    try { h.kill(); } catch { /* ignore */ }
   }
 
   registerDetached(row: SessionRow): SessionHandle {

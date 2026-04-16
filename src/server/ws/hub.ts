@@ -21,7 +21,7 @@ export class WsHub {
       this.db.upsertSession({ id: h.id, claudeSessionId: h.state.claudeSessionId, cwd: h.state.cwd, label: h.state.title, status: h.state.status, effort: h.state.effort });
       this.sendToSubscribers(h.id, { type: 'session.event', payload: { sessionId: h.id, event: ev } });
       this.broadcast({ type: 'session.updated', payload: { state: h.state } });
-      notifications.handle(h.id, ev);
+      notifications.handle({ sessionId: h.id, title: h.state.title }, ev);
     });
     manager.on('updated', (h) => {
       this.db.setLabel(h.id, h.state.title);

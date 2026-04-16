@@ -7,7 +7,7 @@ describe('NotificationEngine', () => {
     const engine = new NotificationEngine();
     const out: Notification[] = [];
     engine.on('notification', (n) => out.push(n));
-    engine.handle('s1', { type: 'result', subtype: 'success', session_id: 's1', is_error: false });
+    engine.handle({ sessionId: 's1', title: null }, { type: 'result', subtype: 'success', session_id: 's1', is_error: false });
     expect(out).toHaveLength(1);
     expect(out[0].kind).toBe('session-ended');
   });
@@ -23,7 +23,7 @@ describe('NotificationEngine', () => {
         content: [{ type: 'tool_result', tool_use_id: 't1', content: 'boom', is_error: true }],
       },
     };
-    engine.handle('s1', ev);
+    engine.handle({ sessionId: 's1', title: null }, ev);
     expect(out[0].kind).toBe('tool-error');
   });
 
@@ -40,7 +40,7 @@ describe('NotificationEngine', () => {
         content: [{ type: 'tool_use', id: 't1', name: 'ExitPlanMode', input: { plan: 'x' } }],
       },
     };
-    engine.handle('s1', ev);
+    engine.handle({ sessionId: 's1', title: null }, ev);
     expect(out[0].kind).toBe('plan-ready');
   });
 
@@ -48,7 +48,7 @@ describe('NotificationEngine', () => {
     const engine = new NotificationEngine();
     const out: Notification[] = [];
     engine.on('notification', (n) => out.push(n));
-    engine.handle('s1', {
+    engine.handle({ sessionId: 's1', title: null }, {
       type: 'assistant',
       session_id: 's1',
       message: { id: 'm1', role: 'assistant', content: [{ type: 'text', text: 'hi' }] },

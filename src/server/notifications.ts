@@ -11,14 +11,22 @@ export interface Notification {
   timestamp: number;
 }
 
+export interface NotificationContext { sessionId: string; title: string | null }
+
+function label(ctx: NotificationContext): string {
+  return ctx.title?.trim() || ctx.sessionId.slice(0, 8);
+}
+
 export class NotificationEngine extends EventEmitter {
-  handle(sessionId: string, event: StreamEvent): void {
+  handle(ctx: NotificationContext, event: StreamEvent): void {
     const ts = Date.now();
+    const sessionId = ctx.sessionId;
+    const name = label(ctx);
     if (event.type === 'result') {
       this.emit('notification', {
         sessionId, timestamp: ts, kind: 'session-ended',
         title: event.is_error ? 'Session crashed' : 'Session finished',
-        body: `${sessionId.slice(0, 8)} · ${event.subtype}`,
+        body: `${name} · ${event.subtype}`,
       } satisfies Notification);
       return;
     }
@@ -29,7 +37,7 @@ export class NotificationEngine extends EventEmitter {
         if (typeof block === 'object' && block.type === 'tool_result' && block.is_error) {
           this.emit('notification', {
             sessionId, timestamp: ts, kind: 'tool-error',
-            title: 'Tool error', body: String(block.content).slice(0, 200),
+            title: `Tool error · ${name}`, body: String(block.content).slice(0, 200),
           } satisfies Notification);
           return;
         }
@@ -41,7 +49,7 @@ export class NotificationEngine extends EventEmitter {
         if (block.type === 'tool_use' && block.name === 'ExitPlanMode') {
           this.emit('notification', {
             sessionId, timestamp: ts, kind: 'plan-ready',
-            title: 'Plan ready for review', body: sessionId.slice(0, 8),
+            title: 'Plan ready for review', body: name,
           } satisfies Notification);
           return;
         }
