@@ -55,13 +55,21 @@ function SessionCard({ s }: { s: SessionState }) {
           <div className="mt-2 truncate text-xs text-red-400" title={s.error}>{s.error}</div>
         )}
         <div className="mt-2 flex gap-2">
-          {s.status === 'detached' && (
+          {s.status === 'detached' && s.claudeSessionId && (
             <button
               onClick={(e) => { e.preventDefault(); send({ type: 'client.resume', payload: { sessionId: s.sessionId } }); }}
               className="rounded bg-purple-600/80 px-2 py-1 text-xs font-medium hover:bg-purple-500"
             >
               Resume
             </button>
+          )}
+          {s.status === 'detached' && !s.claudeSessionId && (
+            <span
+              className="rounded bg-amber-900/40 px-2 py-1 text-xs font-medium text-amber-300"
+              title="Session predates claude_session_id tracking and can't be resumed. Delete it."
+            >
+              not resumable
+            </span>
           )}
           <button
             onClick={(e) => {

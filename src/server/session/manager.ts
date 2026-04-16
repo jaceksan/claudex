@@ -139,9 +139,10 @@ export class SessionManager extends EventEmitter {
       id: row.id,
       state: {
         ...initialState(row.id, row.cwd),
-        // Older rows may not have claude_session_id persisted — fall back to the UI id, which
-        // matches Claude's id for sessions that were originally imported from ~/.claude/projects.
-        claudeSessionId: row.claude_session_id ?? row.id,
+        // Only trust a persisted claude_session_id. Legacy rows that predate the column stay
+        // null so the UI can mark them as non-resumable instead of passing the UI UUID to
+        // `claude --resume` and getting a silent crash.
+        claudeSessionId: row.claude_session_id,
         status: 'detached' as const,
         error: row.error,
         lastActivityAt: row.last_event_at,

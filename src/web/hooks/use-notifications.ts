@@ -15,6 +15,19 @@ export function useNotifications() {
       Notification.requestPermission().catch(() => {});
     }
     const off = subscribe((env: ServerEnvelope) => {
+      if (env.type === 'error') {
+        const timestamp = Date.now();
+        const n: ClaudexNotification = {
+          sessionId: '',
+          kind: 'tool-error',
+          title: 'Server error',
+          body: env.payload.message,
+          timestamp,
+        };
+        setToasts((prev) => [...prev.slice(-4), n]);
+        setTimeout(() => dismiss(timestamp), 8000);
+        return;
+      }
       if (env.type !== 'notification') return;
       const n = env.payload;
       setToasts((prev) => [...prev.slice(-4), n]);

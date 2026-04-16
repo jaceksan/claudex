@@ -86,7 +86,24 @@ export class WsHub {
           const uiId = env.payload.sessionId;
           const existing = this.manager.get(uiId);
           if (!existing) return this.sendError(ws, 'no session metadata for resume', env.requestId);
-          const claudeId = existing.state.claudeSessionId ?? uiId;
+          const claudeId = existing.state.claudeSessionId;
+          if (!claudeId) {
+            return this.sendError(
+              ws,
+              'Cannot resume this session — its Claude session id was not recorded. Delete it and start a new one.',
+              env.requestId,
+            );
+          }
+          // Verify the transcript exists before spawning; otherwise `claude --resume` will crash
+          // immediately with "No conversation found …" and leave a polluted row behind.
+          const transcriptPath = this.transcripts.findTranscript(claudeId);
+          if (!transcriptPath) {
+            return this.sendError(
+              ws,
+              `Cannot resume session: no Claude transcript found for id ${claudeId}. Delete this session and start a new one.`,
+              env.requestId,
+            );
+          }
           const cwd = existing.state.cwd;
           const events = this.transcripts.readEvents(claudeId);
           const h = this.manager.resume({ cwd, uiId, claudeSessionId: claudeId, backlog: events });

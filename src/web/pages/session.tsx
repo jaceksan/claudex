@@ -196,15 +196,21 @@ export default function SessionPage({ id }: { id: string }) {
         {detached && (
           <div className="border-b border-purple-500/30 bg-purple-950/20 px-6 py-3 flex items-center justify-between gap-3">
             <div className="text-sm text-purple-100">
-              Session is detached — the Claude subprocess is no longer running (server restart or previous kill).
-              <span className="text-purple-300"> Click Resume to reattach and continue the conversation.</span>
+              Session is detached — the Claude subprocess is no longer running.
+              {state?.claudeSessionId ? (
+                <span className="text-purple-300"> Click Resume to reattach and continue the conversation.</span>
+              ) : (
+                <span className="text-amber-300"> This session has no recorded Claude id (likely predates the migration); it can't be resumed — please Delete it.</span>
+              )}
             </div>
-            <button
-              onClick={resume}
-              className="rounded bg-purple-600 px-3 py-1 text-sm font-medium hover:bg-purple-500"
-            >
-              Resume
-            </button>
+            {state?.claudeSessionId && (
+              <button
+                onClick={resume}
+                className="rounded bg-purple-600 px-3 py-1 text-sm font-medium hover:bg-purple-500"
+              >
+                Resume
+              </button>
+            )}
           </div>
         )}
         <div ref={scrollRef} className="flex-1 overflow-auto px-6 py-4">
