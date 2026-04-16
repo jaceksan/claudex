@@ -60,8 +60,7 @@ export class WsHub {
           this.subs.get(ws)?.delete(env.payload.sessionId);
           break;
         case 'client.launch': {
-          const h = this.manager.create(env.payload);
-          this.send(ws, { type: 'session.created', payload: { state: h.state } });
+          this.manager.create(env.payload);
           break;
         }
         case 'client.sendInput': {

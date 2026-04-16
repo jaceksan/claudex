@@ -62,6 +62,7 @@ export class SessionManager extends EventEmitter {
       kill() { proc.kill(); },
     }) as SessionHandle;
 
+    let registered = false;
     proc.on('event', (ev) => {
       handle.state = reduce(handle.state, ev);
       ring.push(ev);
@@ -69,9 +70,12 @@ export class SessionManager extends EventEmitter {
       if (ev.type === 'system' && ev.subtype === 'init') {
         const realId = ev.session_id;
         if (realId !== handle.id) {
-          this.sessions.delete(handle.id);
           handle.id = realId;
-          this.sessions.set(realId, handle);
+        }
+        if (!registered) {
+          this.sessions.set(handle.id, handle);
+          registered = true;
+          this.emit('created', handle);
         }
       }
       handle.emit('event', ev);
@@ -81,6 +85,13 @@ export class SessionManager extends EventEmitter {
       handle.state = { ...handle.state, parseErrors: handle.state.parseErrors + 1 };
       handle.emit('stateChange', handle.state);
     });
+    const ensureRegistered = () => {
+      if (!registered) {
+        this.sessions.set(handle.id, handle);
+        registered = true;
+        this.emit('created', handle);
+      }
+    };
     proc.on('exit', (code) => {
       if (handle.state.status !== 'ended' && handle.state.status !== 'crashed') {
         handle.state = {
@@ -89,17 +100,18 @@ export class SessionManager extends EventEmitter {
           error: code === 0 ? null : proc.getStderrTail(),
         };
       }
+      ensureRegistered();
       handle.emit('ended', handle.state);
       this.emit('ended', handle);
     });
     proc.on('error', (err) => {
       handle.state = { ...handle.state, status: 'crashed', error: err.message };
+      ensureRegistered();
       handle.emit('ended', handle.state);
+      this.emit('ended', handle);
     });
 
-    this.sessions.set(localId, handle);
     proc.start();
-    this.emit('created', handle);
     return handle;
   }
 
