@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { parseBuffer } from '../stream-json/parser.js';
 import type { StreamEvent } from '../stream-json/types.js';
+import type { EffortLevel } from './state.js';
 
 export interface SessionProcessOptions {
   cwd: string;
@@ -9,6 +10,7 @@ export interface SessionProcessOptions {
   args?: string[];             // override; defaults to stream-json flags
   permissionMode?: string;
   resumeSessionId?: string;
+  effort?: EffortLevel;
   env?: NodeJS.ProcessEnv;
 }
 
@@ -109,6 +111,7 @@ export class SessionProcess extends EventEmitter {
     ];
     if (this.opts.permissionMode) args.push('--permission-mode', this.opts.permissionMode);
     if (this.opts.resumeSessionId) args.push('--resume', this.opts.resumeSessionId);
+    if (this.opts.effort) args.push('--effort', this.opts.effort);
     return args;
   }
 }

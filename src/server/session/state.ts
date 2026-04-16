@@ -1,5 +1,13 @@
 import type { StreamEvent } from '../stream-json/types.js';
 
+export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export const EFFORT_LEVELS: readonly EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+export const DEFAULT_EFFORT: EffortLevel = 'medium';
+
+export function isEffortLevel(v: unknown): v is EffortLevel {
+  return typeof v === 'string' && (EFFORT_LEVELS as readonly string[]).includes(v);
+}
+
 export type SessionStatus =
   | 'starting'
   | 'running'
@@ -31,6 +39,7 @@ export interface SessionState {
   lastActivityAt: number;
   planText: string | null;
   error: string | null;
+  effort: EffortLevel;
 }
 
 export function initialState(sessionId: string, cwd: string): SessionState {
@@ -49,6 +58,7 @@ export function initialState(sessionId: string, cwd: string): SessionState {
     lastActivityAt: Date.now(),
     planText: null,
     error: null,
+    effort: DEFAULT_EFFORT,
   };
 }
 

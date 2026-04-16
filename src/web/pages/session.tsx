@@ -14,6 +14,9 @@ import { GitBadge } from '../components/git-badge';
 import { useGitInfo } from '../hooks/use-git-info';
 import { statusColors, isBusy } from '../lib/status';
 
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+type EffortLevel = typeof EFFORTS[number];
+
 function ThinkingIndicator({ since, label }: { since: number; label: string }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -148,6 +151,18 @@ export default function SessionPage({ id }: { id: string }) {
         <span>{state.tokens.input}/{state.tokens.output} tokens</span>
         <span>·</span>
         <span>{state.completedTools} tools</span>
+        <span>·</span>
+        <label className="inline-flex items-center gap-1" title="Claude effort level — changing this sends /effort to the running session">
+          <span>effort:</span>
+          <select
+            value={state.effort ?? 'medium'}
+            onChange={(e) => send({ type: 'client.setEffort', payload: { sessionId: id, effort: e.target.value as EffortLevel } })}
+            disabled={state.status === 'ended' || state.status === 'crashed'}
+            className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-200 outline-none ring-1 ring-zinc-700 focus:ring-blue-500 disabled:opacity-50"
+          >
+            {EFFORTS.map((lvl) => <option key={lvl} value={lvl}>{lvl}</option>)}
+          </select>
+        </label>
         <span>·</span>
         <button
           onClick={() => copy(state.sessionId)}

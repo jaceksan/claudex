@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { SessionProcess, type SessionProcessOptions } from './process.js';
-import { initialState, reduce, type SessionState } from './state.js';
+import { DEFAULT_EFFORT, initialState, reduce, type EffortLevel, type SessionState } from './state.js';
 import type { StreamEvent } from '../stream-json/types.js';
 import type { SessionRow } from '../db.js';
 
@@ -19,6 +19,7 @@ export interface CreateSessionOpts {
   prompt?: string;
   permissionMode?: string;
   label?: string;
+  effort?: EffortLevel;
   resumeSessionId?: string;     // Claude's internal session id — forwarded to `claude --resume`.
   presetUiId?: string;          // Keep this UI id for the new handle (used by Resume to reuse the detached card's id).
 }
@@ -49,10 +50,12 @@ export class SessionManager extends EventEmitter {
     const localId = opts.presetUiId ?? randomUUID();
     const ring: StreamEvent[] = [];
     const ringSize = this.opts.ringSize ?? 500;
+    const effort = opts.effort ?? DEFAULT_EFFORT;
     const processOpts: SessionProcessOptions = {
       cwd: opts.cwd,
       permissionMode: opts.permissionMode,
       resumeSessionId: opts.resumeSessionId,
+      effort,
       ...this.opts.spawnOverride?.(opts),
     };
     const proc = new SessionProcess(processOpts);
@@ -64,6 +67,7 @@ export class SessionManager extends EventEmitter {
         ...initialState(localId, opts.cwd),
         claudeSessionId: opts.resumeSessionId ?? null,
         title: opts.label?.trim() || null,
+        effort,
       },
       eventLog: ring,
       process: proc,
@@ -135,6 +139,19 @@ export class SessionManager extends EventEmitter {
     this.emit('updated', h);
   }
 
+  setEffort(id: string, effort: EffortLevel): void {
+    const h = this.sessions.get(id);
+    if (!h) return;
+    if (h.state.effort === effort) return;
+    h.state = { ...h.state, effort };
+    this.emit('updated', h);
+    // Inject as a user message so Claude CLI applies the slash command live. Reusing
+    // handle.send echoes it into the event log for transparency and persists via stream-json.
+    if (h.process && h.state.status !== 'detached' && h.state.status !== 'ended' && h.state.status !== 'crashed') {
+      try { h.send(`/effort ${effort}`); } catch { /* process may have exited */ }
+    }
+  }
+
   delete(id: string): void {
     const h = this.sessions.get(id);
     if (!h) return;
@@ -156,6 +173,7 @@ export class SessionManager extends EventEmitter {
         status: 'detached' as const,
         error: row.error,
         lastActivityAt: row.last_event_at,
+        effort: (row.effort as EffortLevel | null) ?? DEFAULT_EFFORT,
       },
       eventLog: [] as StreamEvent[],
       process: null as SessionProcess | null,
@@ -168,12 +186,15 @@ export class SessionManager extends EventEmitter {
 
   resume(opts: { cwd: string; uiId: string; claudeSessionId: string; backlog?: StreamEvent[] }): SessionHandle {
     // Replace any existing detached handle under the same UI id before re-creating.
-    const prevTitle = this.sessions.get(opts.uiId)?.state.title ?? null;
+    const prev = this.sessions.get(opts.uiId)?.state;
+    const prevTitle = prev?.title ?? null;
+    const prevEffort = prev?.effort ?? DEFAULT_EFFORT;
     this.sessions.delete(opts.uiId);
     const handle = this.create({
       cwd: opts.cwd,
       presetUiId: opts.uiId,
       resumeSessionId: opts.claudeSessionId,
+      effort: prevEffort,
     });
     if (prevTitle) handle.state = { ...handle.state, title: prevTitle };
     // Replay backlog through reducer before live events arrive
@@ -183,6 +204,11 @@ export class SessionManager extends EventEmitter {
         handle.eventLog.push(ev);
       }
     }
+    // Claude's `--resume --input-format stream-json` stays completely silent until the first user
+    // message arrives on stdin — no system:init, nothing. If we leave status at 'starting' the UI
+    // looks frozen; mark it 'idle' so the composer is enabled and the user knows to type.
+    handle.state = { ...handle.state, status: 'idle' };
+    this.emit('updated', handle);
     return handle;
   }
 }

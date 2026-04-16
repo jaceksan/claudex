@@ -3,6 +3,7 @@ import { send } from '../lib/ws';
 
 const RECENT_KEY = 'claudex.recentCwds';
 const MODES = ['default', 'plan', 'acceptEdits', 'bypassPermissions'] as const;
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 
 function loadRecent(): string[] {
   try { return JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]'); } catch { return []; }
@@ -18,6 +19,7 @@ export function LauncherModal({ onClose }: { onClose: () => void }) {
   const [title, setTitle] = useState('');
   const [prompt, setPrompt] = useState('');
   const [mode, setMode] = useState<typeof MODES[number]>('default');
+  const [effort, setEffort] = useState<typeof EFFORTS[number]>('medium');
   const [recent, setRecent] = useState<string[]>([]);
 
   useEffect(() => { setRecent(loadRecent()); }, []);
@@ -32,6 +34,7 @@ export function LauncherModal({ onClose }: { onClose: () => void }) {
         prompt: prompt.trim() || undefined,
         permissionMode: mode === 'default' ? undefined : mode,
         label: title.trim() || undefined,
+        effort,
       },
     });
     onClose();
@@ -88,6 +91,17 @@ export function LauncherModal({ onClose }: { onClose: () => void }) {
             className="mt-1 w-full rounded bg-zinc-800 px-3 py-2 text-sm outline-none ring-1 ring-zinc-700 focus:ring-blue-500"
           >
             {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </label>
+
+        <label className="mt-4 block text-sm">
+          <span className="text-zinc-300">Effort</span>
+          <select
+            value={effort}
+            onChange={(e) => setEffort(e.target.value as typeof EFFORTS[number])}
+            className="mt-1 w-full rounded bg-zinc-800 px-3 py-2 text-sm outline-none ring-1 ring-zinc-700 focus:ring-blue-500"
+          >
+            {EFFORTS.map((e) => <option key={e} value={e}>{e}</option>)}
           </select>
         </label>
 

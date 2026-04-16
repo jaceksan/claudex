@@ -10,6 +10,7 @@ export interface SessionRow {
   ended_at: number | null;
   last_event_at: number;
   error: string | null;
+  effort: string | null;
 }
 
 export class Db {
@@ -39,19 +40,23 @@ export class Db {
     if (!cols.includes('claude_session_id')) {
       this.db.exec('ALTER TABLE sessions ADD COLUMN claude_session_id TEXT');
     }
+    if (!cols.includes('effort')) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN effort TEXT NOT NULL DEFAULT 'medium'");
+    }
   }
 
-  upsertSession(row: { id: string; claudeSessionId?: string | null; cwd: string; label: string | null; status: string; error?: string | null }): void {
+  upsertSession(row: { id: string; claudeSessionId?: string | null; cwd: string; label: string | null; status: string; effort?: string | null; error?: string | null }): void {
     const now = Date.now();
     this.db.prepare(`
-      INSERT INTO sessions (id, claude_session_id, cwd, label, status, created_at, last_event_at, error)
-      VALUES (@id, @claude, @cwd, @label, @status, @now, @now, @error)
+      INSERT INTO sessions (id, claude_session_id, cwd, label, status, created_at, last_event_at, error, effort)
+      VALUES (@id, @claude, @cwd, @label, @status, @now, @now, @error, COALESCE(@effort, 'medium'))
       ON CONFLICT(id) DO UPDATE SET
         claude_session_id = COALESCE(excluded.claude_session_id, sessions.claude_session_id),
         status = excluded.status,
         label = COALESCE(excluded.label, sessions.label),
         last_event_at = excluded.last_event_at,
         error = COALESCE(excluded.error, sessions.error),
+        effort = COALESCE(excluded.effort, sessions.effort),
         ended_at = CASE WHEN excluded.status IN ('ended','crashed') THEN excluded.last_event_at ELSE sessions.ended_at END
     `).run({
       id: row.id,
@@ -61,6 +66,7 @@ export class Db {
       status: row.status,
       now,
       error: row.error ?? null,
+      effort: row.effort ?? null,
     });
   }
 
@@ -84,6 +90,10 @@ export class Db {
 
   setLabel(id: string, label: string | null): void {
     this.db.prepare('UPDATE sessions SET label=? WHERE id=?').run(label, id);
+  }
+
+  setEffort(id: string, effort: string): void {
+    this.db.prepare('UPDATE sessions SET effort=? WHERE id=?').run(effort, id);
   }
 
   deleteSession(id: string): void {

@@ -4,6 +4,7 @@ import type { NotificationEngine } from '../notifications.js';
 import type { Db } from '../db.js';
 import type { ClientEnvelope, ServerEnvelope } from './envelope.js';
 import type { TranscriptReader } from '../session/transcript.js';
+import { isEffortLevel } from '../session/state.js';
 
 export class WsHub {
   private readonly clients = new Set<WebSocket>();
@@ -17,17 +18,18 @@ export class WsHub {
   ) {
     manager.on('created', (h) => this.broadcast({ type: 'session.created', payload: { state: h.state } }));
     manager.on('event', (h, ev) => {
-      this.db.upsertSession({ id: h.id, claudeSessionId: h.state.claudeSessionId, cwd: h.state.cwd, label: h.state.title, status: h.state.status });
+      this.db.upsertSession({ id: h.id, claudeSessionId: h.state.claudeSessionId, cwd: h.state.cwd, label: h.state.title, status: h.state.status, effort: h.state.effort });
       this.sendToSubscribers(h.id, { type: 'session.event', payload: { sessionId: h.id, event: ev } });
       this.broadcast({ type: 'session.updated', payload: { state: h.state } });
       notifications.handle(h, ev);
     });
     manager.on('updated', (h) => {
       this.db.setLabel(h.id, h.state.title);
+      this.db.setEffort(h.id, h.state.effort);
       this.broadcast({ type: 'session.updated', payload: { state: h.state } });
     });
     manager.on('ended', (h) => {
-      this.db.upsertSession({ id: h.id, claudeSessionId: h.state.claudeSessionId, cwd: h.state.cwd, label: h.state.title, status: h.state.status, error: h.state.error });
+      this.db.upsertSession({ id: h.id, claudeSessionId: h.state.claudeSessionId, cwd: h.state.cwd, label: h.state.title, status: h.state.status, effort: h.state.effort, error: h.state.error });
       this.broadcast({ type: 'session.ended', payload: { state: h.state } });
     });
     manager.on('deleted', (id: string) => {
@@ -68,7 +70,11 @@ export class WsHub {
           this.subs.get(ws)?.delete(env.payload.sessionId);
           break;
         case 'client.launch': {
-          this.manager.create(env.payload);
+          const { effort, ...rest } = env.payload;
+          this.manager.create({
+            ...rest,
+            effort: effort && isEffortLevel(effort) ? effort : undefined,
+          });
           break;
         }
         case 'client.sendInput': {
@@ -88,6 +94,10 @@ export class WsHub {
           break;
         case 'client.rename':
           this.manager.setTitle(env.payload.sessionId, env.payload.title);
+          break;
+        case 'client.setEffort':
+          if (!isEffortLevel(env.payload.effort)) return this.sendError(ws, 'invalid effort level', env.requestId);
+          this.manager.setEffort(env.payload.sessionId, env.payload.effort);
           break;
         case 'client.resume': {
           const uiId = env.payload.sessionId;
