@@ -1,0 +1,42 @@
+src/web/components/composer.tsx
+  fc742e1a06a3e927 1,3-59,63-80,87-104,108-117,124-128,131-188
+src/server/index.ts
+  fc742e1a06a3e927 12,48-52
+src/web/pages/session.tsx
+  a6ed9d6363a6c71d 198
+src/server/commands.ts
+  fc742e1a06a3e927 1-176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "062bceab092a5da4078a543d67543aa4ae296e0f",
+  "prompts": {
+    "a6ed9d6363a6c71d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8e995871-192b-4832-98f2-4d6e6e724139",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "fc742e1a06a3e927": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aab6a28d-f715-43a2-9170-8c1742cee733",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 766,
+      "overriden_lines": 0
+    }
+  }
+}
