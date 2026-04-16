@@ -1,0 +1,31 @@
+src/server/ws/hub.ts
+  fc742e1a06a3e927 89-106
+src/web/hooks/use-notifications.ts
+  fc742e1a06a3e927 18-30
+src/web/pages/dashboard.tsx
+  fc742e1a06a3e927 58,66-73
+src/web/pages/session.tsx
+  fc742e1a06a3e927 199-204,206-213
+src/server/session/manager.ts
+  fc742e1a06a3e927 142-145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "f2cc0503c50d4994fcf4721fc98ae2659c21fc8d",
+  "prompts": {
+    "fc742e1a06a3e927": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aab6a28d-f715-43a2-9170-8c1742cee733",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 59,
+      "total_deletions": 14,
+      "accepted_lines": 698,
+      "overriden_lines": 0
+    }
+  }
+}
