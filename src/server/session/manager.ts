@@ -49,12 +49,13 @@ export class SessionManager extends EventEmitter {
     const ringSize = this.opts.ringSize ?? 500;
     const processOpts: SessionProcessOptions = {
       cwd: opts.cwd,
-      prompt: opts.prompt,
       permissionMode: opts.permissionMode,
       resumeSessionId: opts.resumeSessionId,
       ...this.opts.spawnOverride?.(opts),
     };
     const proc = new SessionProcess(processOpts);
+    const ringSizeForHandle = ringSize;
+    const self = this;
     const handle = Object.assign(new EventEmitter(), {
       id: localId,
       state: {
@@ -63,7 +64,19 @@ export class SessionManager extends EventEmitter {
       },
       eventLog: ring,
       process: proc,
-      send(text: string) { proc.sendUserMessage(text); },
+      send(text: string) {
+        // Echo locally first so the UI shows the message instantly, then forward to claude.
+        const ev: StreamEvent = {
+          type: 'user',
+          message: { role: 'user', content: [{ type: 'text', text }] },
+        };
+        handle.state = reduce(handle.state, ev);
+        ring.push(ev);
+        if (ring.length > ringSizeForHandle) ring.shift();
+        handle.emit('event', ev);
+        self.emit('event', handle, ev);
+        proc.sendUserMessage(text);
+      },
       kill() { proc.kill(); },
     }) as SessionHandle;
 
@@ -99,6 +112,7 @@ export class SessionManager extends EventEmitter {
     this.sessions.set(handle.id, handle);
     this.emit('created', handle);
     proc.start();
+    if (opts.prompt) handle.send(opts.prompt);
     return handle;
   }
 

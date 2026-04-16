@@ -6,8 +6,7 @@ import type { StreamEvent } from '../stream-json/types.js';
 export interface SessionProcessOptions {
   cwd: string;
   command?: string;            // override for tests; defaults to 'claude'
-  args?: string[];             // override; defaults to stream-json flags + prompt
-  prompt?: string;
+  args?: string[];             // override; defaults to stream-json flags
   permissionMode?: string;
   resumeSessionId?: string;
   env?: NodeJS.ProcessEnv;
@@ -65,10 +64,6 @@ export class SessionProcess extends EventEmitter {
 
     this.child.on('error', (err) => this.emit('error', err));
     this.child.on('exit', (code, signal) => this.emit('exit', code, signal));
-
-    // In stream-json input mode claude reads user messages from stdin,
-    // not from a trailing CLI arg. Deliver the initial prompt immediately.
-    if (this.opts.prompt) this.sendUserMessage(this.opts.prompt);
   }
 
   sendUserMessage(text: string): void {
@@ -111,7 +106,6 @@ export class SessionProcess extends EventEmitter {
       '--input-format', 'stream-json',
       '--verbose',
       '--include-partial-messages',
-      '--replay-user-messages',
     ];
     if (this.opts.permissionMode) args.push('--permission-mode', this.opts.permissionMode);
     if (this.opts.resumeSessionId) args.push('--resume', this.opts.resumeSessionId);
