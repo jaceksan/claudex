@@ -115,10 +115,24 @@ export default function SessionPage({ id }: { id: string }) {
           </div>
           {state && (
             <div className="flex gap-2">
-              {(state.status === 'running' || state.status === 'starting' || state.status === 'idle' || state.status === 'waiting-permission') && (
+              {(state.status === 'running' || state.status === 'starting' || state.status === 'waiting-permission' || state.currentTool !== null || streaming.length > 0) && (
                 <button
-                  onClick={() => send({ type: 'client.kill', payload: { sessionId: id } })}
-                  className="rounded bg-red-600/80 px-3 py-1 text-sm hover:bg-red-500"
+                  onClick={() => send({ type: 'client.interrupt', payload: { sessionId: id } })}
+                  className="rounded bg-amber-600/80 px-3 py-1 text-sm hover:bg-amber-500"
+                  title="Interrupt the current turn (session stays alive)"
+                >
+                  Stop
+                </button>
+              )}
+              {(state.status === 'idle' || state.status === 'running' || state.status === 'starting' || state.status === 'waiting-permission') && (
+                <button
+                  onClick={() => {
+                    if (confirm('Kill the Claude subprocess? The session will end; use Delete to remove it.')) {
+                      send({ type: 'client.kill', payload: { sessionId: id } });
+                    }
+                  }}
+                  className="rounded bg-zinc-700/70 px-3 py-1 text-sm text-zinc-200 hover:bg-red-600 hover:text-white"
+                  title="End the Claude subprocess"
                 >
                   Kill
                 </button>
@@ -130,7 +144,8 @@ export default function SessionPage({ id }: { id: string }) {
                     navigate('/');
                   }
                 }}
-                className="rounded bg-zinc-700/70 px-3 py-1 text-sm text-zinc-200 hover:bg-red-600 hover:text-white"
+                className="rounded bg-zinc-800 px-3 py-1 text-sm text-zinc-200 hover:bg-red-600 hover:text-white"
+                title="Remove session from dashboard"
               >
                 Delete
               </button>
@@ -147,7 +162,7 @@ export default function SessionPage({ id }: { id: string }) {
               )}
               {streaming && (
                 <div className="rounded border border-blue-500/30 bg-blue-950/10 px-3 py-2">
-                  <div className="prose prose-invert prose-sm max-w-none">
+                  <div className="prose prose-invert prose-sm max-w-none text-[13px] leading-relaxed">
                     <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>{streaming}</Markdown>
                   </div>
                   <div className="mt-1 text-[10px] uppercase tracking-wide text-blue-400/70">streaming…</div>

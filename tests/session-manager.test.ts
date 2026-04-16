@@ -19,7 +19,8 @@ describe('SessionManager', () => {
     expect(s.state.status).toBe('starting');
     await once(s, 'ended');
     expect(s.state.status).toBe('ended');
-    expect(s.state.sessionId).toBe('mgr-1');
-    expect(mgr.list()).toHaveLength(1); // kept after exit
+    expect(s.state.claudeSessionId).toBe('mgr-1'); // claude's id recorded
+    expect(s.state.sessionId).not.toBe('mgr-1');    // UI id stays stable
+    expect(mgr.list()).toHaveLength(1);             // kept after exit
   });
 });

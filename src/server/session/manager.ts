@@ -62,25 +62,10 @@ export class SessionManager extends EventEmitter {
       kill() { proc.kill(); },
     }) as SessionHandle;
 
-    let registered = false;
     proc.on('event', (ev) => {
       handle.state = reduce(handle.state, ev);
       ring.push(ev);
       if (ring.length > ringSize) ring.shift();
-      // Claude emits several system subtypes (init, hook_started, hook_response, etc.)
-      // Register on the first event that carries a session_id so we work across versions/hooks.
-      const sid = (ev as { session_id?: string }).session_id;
-      if (sid && !registered) {
-        if (sid !== handle.id) handle.id = sid;
-        handle.state = {
-          ...handle.state,
-          sessionId: sid,
-          status: handle.state.status === 'starting' ? 'running' : handle.state.status,
-        };
-        this.sessions.set(handle.id, handle);
-        registered = true;
-        this.emit('created', handle);
-      }
       handle.emit('event', ev);
       this.emit('event', handle, ev);
     });
@@ -88,13 +73,6 @@ export class SessionManager extends EventEmitter {
       handle.state = { ...handle.state, parseErrors: handle.state.parseErrors + 1 };
       handle.emit('stateChange', handle.state);
     });
-    const ensureRegistered = () => {
-      if (!registered) {
-        this.sessions.set(handle.id, handle);
-        registered = true;
-        this.emit('created', handle);
-      }
-    };
     proc.on('exit', (code) => {
       if (handle.state.status !== 'ended' && handle.state.status !== 'crashed') {
         handle.state = {
@@ -103,19 +81,24 @@ export class SessionManager extends EventEmitter {
           error: code === 0 ? null : proc.getStderrTail(),
         };
       }
-      ensureRegistered();
       handle.emit('ended', handle.state);
       this.emit('ended', handle);
     });
     proc.on('error', (err) => {
       handle.state = { ...handle.state, status: 'crashed', error: err.message };
-      ensureRegistered();
       handle.emit('ended', handle.state);
       this.emit('ended', handle);
     });
 
+    // Register + emit 'created' immediately so the UI shows a card the moment the user launches.
+    this.sessions.set(handle.id, handle);
+    this.emit('created', handle);
     proc.start();
     return handle;
+  }
+
+  interrupt(id: string): void {
+    this.sessions.get(id)?.process?.interrupt();
   }
 
   kill(id: string): void {
@@ -135,6 +118,7 @@ export class SessionManager extends EventEmitter {
       id: row.id,
       state: {
         ...initialState(row.id, row.cwd),
+        claudeSessionId: row.id,
         status: 'detached' as const,
         error: row.error,
         lastActivityAt: row.last_event_at,

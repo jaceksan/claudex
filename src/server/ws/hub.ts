@@ -76,6 +76,9 @@ export class WsHub {
         case 'client.kill':
           this.manager.kill(env.payload.sessionId);
           break;
+        case 'client.interrupt':
+          this.manager.interrupt(env.payload.sessionId);
+          break;
         case 'client.delete':
           this.manager.delete(env.payload.sessionId);
           break;

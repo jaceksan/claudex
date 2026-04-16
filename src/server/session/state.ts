@@ -17,7 +17,8 @@ export interface ToolCall {
 }
 
 export interface SessionState {
-  sessionId: string;
+  sessionId: string;         // Stable UI id (our UUID placeholder, or Claude's session_id when resuming from disk).
+  claudeSessionId: string | null; // Claude's internal session_id — used for `claude --resume`.
   cwd: string;
   status: SessionStatus;
   lastAssistantText: string;
@@ -34,6 +35,7 @@ export interface SessionState {
 export function initialState(sessionId: string, cwd: string): SessionState {
   return {
     sessionId,
+    claudeSessionId: null,
     cwd,
     status: 'starting',
     lastAssistantText: '',
@@ -53,7 +55,12 @@ export function reduce(state: SessionState, event: StreamEvent): SessionState {
   switch (event.type) {
     case 'system':
       if (event.subtype === 'init') {
-        return { ...base, status: 'running', sessionId: event.session_id, cwd: event.cwd };
+        return {
+          ...base,
+          status: base.status === 'starting' ? 'running' : base.status,
+          claudeSessionId: event.session_id,
+          cwd: event.cwd,
+        };
       }
       return base;
 

@@ -80,6 +80,16 @@ export class SessionProcess extends EventEmitter {
     this.child.stdin.write(JSON.stringify(envelope) + '\n');
   }
 
+  interrupt(): void {
+    if (!this.child) return;
+    const envelope = {
+      type: 'control_request',
+      request_id: `int-${Date.now()}`,
+      request: { subtype: 'interrupt' },
+    };
+    this.child.stdin.write(JSON.stringify(envelope) + '\n');
+  }
+
   closeStdin(): void {
     this.child?.stdin.end();
   }
@@ -101,6 +111,7 @@ export class SessionProcess extends EventEmitter {
       '--input-format', 'stream-json',
       '--verbose',
       '--include-partial-messages',
+      '--replay-user-messages',
     ];
     if (this.opts.permissionMode) args.push('--permission-mode', this.opts.permissionMode);
     if (this.opts.resumeSessionId) args.push('--resume', this.opts.resumeSessionId);

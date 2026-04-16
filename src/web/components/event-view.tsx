@@ -37,7 +37,7 @@ function ToolUseView({ block }: { block: ToolUseBlock }) {
     return (
       <div className="rounded border-l-4 border-purple-500 bg-purple-950/20 p-3">
         <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-purple-300">Plan</div>
-        <div className="prose prose-invert prose-sm max-w-none">
+        <div className="prose prose-invert prose-sm max-w-none text-[13px] leading-relaxed">
           <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>{plan}</Markdown>
         </div>
       </div>
@@ -108,7 +108,7 @@ export function EventView({ event }: { event: StreamEvent }) {
           if (block.type === 'text') {
             if (!block.text.trim()) return null;
             return (
-              <div key={i} className="prose prose-invert prose-sm max-w-none">
+              <div key={i} className="prose prose-invert prose-sm max-w-none text-[13px] leading-relaxed">
                 <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>{block.text}</Markdown>
               </div>
             );

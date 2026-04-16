@@ -25,7 +25,7 @@ describe('SessionState', () => {
 });
 
 describe('reduce', () => {
-  it('system:init transitions to running and adopts session_id', () => {
+  it('system:init transitions starting→running and records claudeSessionId (UI sessionId is stable)', () => {
     const s0 = initialState('pending', '/tmp');
     const s1 = reduce(s0, {
       type: 'system',
@@ -34,7 +34,8 @@ describe('reduce', () => {
       cwd: '/tmp',
     });
     expect(s1.status).toBe('running');
-    expect(s1.sessionId).toBe('real-id');
+    expect(s1.claudeSessionId).toBe('real-id');
+    expect(s1.sessionId).toBe('pending'); // UI id doesn't change
   });
 
   it('assistant text event updates lastAssistantText', () => {
