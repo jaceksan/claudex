@@ -1,0 +1,25 @@
+tests/state.test.ts
+  fc742e1a06a3e927 26-53
+src/server/session/state.ts
+  fc742e1a06a3e927 52-117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "f5225ea26adc03f452e6c0322e5cf5690bb51273",
+  "prompts": {
+    "fc742e1a06a3e927": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aab6a28d-f715-43a2-9170-8c1742cee733",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 94,
+      "total_deletions": 1,
+      "accepted_lines": 171,
+      "overriden_lines": 0
+    }
+  }
+}
