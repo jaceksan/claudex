@@ -9,6 +9,7 @@ import { Db } from './db.js';
 import { WsHub } from './ws/hub.js';
 import { TranscriptReader } from './session/transcript.js';
 import { getGitInfo } from './git.js';
+import { getCommands } from './commands.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 7878);
@@ -43,6 +44,11 @@ for (const row of db.listSessions()) {
 app.get('/ws', { websocket: true }, (socket) => hub.attach(socket));
 
 app.get('/api/health', async () => ({ ok: true }));
+
+app.get('/api/commands', async () => {
+  const cat = await getCommands();
+  return { entries: cat.entries };
+});
 
 app.get<{ Params: { id: string } }>('/api/sessions/:id/git', async (req, reply) => {
   const h = manager.get(req.params.id);

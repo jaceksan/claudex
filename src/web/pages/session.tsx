@@ -195,7 +195,7 @@ export default function SessionPage({ id }: { id: string }) {
       <aside className="w-60 shrink-0 overflow-auto border-r border-zinc-800 bg-zinc-950/60">
         <div className="px-3 py-2 text-xs uppercase tracking-wide text-zinc-500">Sessions</div>
         <ul>
-          {sessions.map((s) => (
+          {[...sessions].sort((a, b) => b.lastActivityAt - a.lastActivityAt).map((s) => (
             <li key={s.sessionId}>
               <Link
                 href={`/session/${s.sessionId}`}
