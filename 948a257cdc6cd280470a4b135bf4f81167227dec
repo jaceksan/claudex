@@ -1,0 +1,29 @@
+src/web/components/event-view.tsx
+  fc742e1a06a3e927 16,21,26-33,38-39,52,62,68,70-71,78,80-85,87-92,98-102,106,109,127-133,135-136,138-142,156-158
+src/server/session/process.ts
+  fc742e1a06a3e927 97-104
+src/web/pages/session.tsx
+  fc742e1a06a3e927 1,3-5,14-26,30,33,36,42,44-52,68-71,140,142-143,148-155,162
+src/server/stream-json/types.ts
+  fc742e1a06a3e927 44-62,67-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "948a257cdc6cd280470a4b135bf4f81167227dec",
+  "prompts": {
+    "fc742e1a06a3e927": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aab6a28d-f715-43a2-9170-8c1742cee733",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 129,
+      "total_deletions": 37,
+      "accepted_lines": 541,
+      "overriden_lines": 0
+    }
+  }
+}
