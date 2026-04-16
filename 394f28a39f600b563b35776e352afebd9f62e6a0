@@ -1,0 +1,29 @@
+tests/fixtures/simple-chat.jsonl
+  fc742e1a06a3e927 1-3
+tests/fixtures/tool-heavy.jsonl
+  fc742e1a06a3e927 1-7
+tests/fixtures/error-result.jsonl
+  fc742e1a06a3e927 1-4
+tests/fixtures/plan-mode.jsonl
+  fc742e1a06a3e927 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "394f28a39f600b563b35776e352afebd9f62e6a0",
+  "prompts": {
+    "fc742e1a06a3e927": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aab6a28d-f715-43a2-9170-8c1742cee733",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 18,
+      "total_deletions": 0,
+      "accepted_lines": 18,
+      "overriden_lines": 0
+    }
+  }
+}
