@@ -43,9 +43,17 @@ export class WsHub {
         case 'client.listSessions':
           this.send(ws, { type: 'session.list', payload: { sessions: this.manager.list().map((h) => h.state) } });
           break;
-        case 'client.subscribe':
+        case 'client.subscribe': {
           this.subs.get(ws)?.add(env.payload.sessionId);
+          const h = this.manager.get(env.payload.sessionId);
+          if (h) {
+            this.send(ws, {
+              type: 'session.replay',
+              payload: { state: h.state, events: [...h.eventLog] },
+            });
+          }
           break;
+        }
         case 'client.unsubscribe':
           this.subs.get(ws)?.delete(env.payload.sessionId);
           break;

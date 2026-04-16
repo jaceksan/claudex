@@ -8,6 +8,7 @@ export type ServerEnvelope =
   | { type: 'session.event';   payload: { sessionId: string; event: StreamEvent } }
   | { type: 'session.ended';   payload: { state: SessionState } }
   | { type: 'session.list';    payload: { sessions: SessionState[] } }
+  | { type: 'session.replay';  payload: { state: SessionState; events: StreamEvent[] } }
   | { type: 'notification';    payload: Notification }
   | { type: 'error';           payload: { message: string; requestId?: string } };
 
