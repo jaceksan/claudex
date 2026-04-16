@@ -3,6 +3,7 @@ import type { SessionManager } from '../session/manager.js';
 import type { NotificationEngine } from '../notifications.js';
 import type { Db } from '../db.js';
 import type { ClientEnvelope, ServerEnvelope } from './envelope.js';
+import type { TranscriptReader } from '../session/transcript.js';
 
 export class WsHub {
   private readonly clients = new Set<WebSocket>();
@@ -12,6 +13,7 @@ export class WsHub {
     private readonly manager: SessionManager,
     private readonly notifications: NotificationEngine,
     private readonly db: Db,
+    private readonly transcripts: TranscriptReader,
   ) {
     manager.on('created', (h) => this.broadcast({ type: 'session.created', payload: { state: h.state } }));
     manager.on('event', (h, ev) => {
@@ -71,6 +73,16 @@ export class WsHub {
         case 'client.kill':
           this.manager.kill(env.payload.sessionId);
           break;
+        case 'client.resume': {
+          const id = env.payload.sessionId;
+          const existing = this.manager.get(id);
+          const cwd = existing?.state.cwd;
+          if (!cwd) return this.sendError(ws, 'no session metadata for resume', env.requestId);
+          const events = this.transcripts.readEvents(id);
+          const h = this.manager.resume({ cwd, resumeSessionId: id, backlog: events });
+          this.send(ws, { type: 'session.created', payload: { state: h.state } });
+          break;
+        }
       }
     } catch (e) {
       this.sendError(ws, (e as Error).message, env.requestId);

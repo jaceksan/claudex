@@ -18,4 +18,5 @@ export type ClientEnvelope =
   | { type: 'client.launch';      payload: { cwd: string; prompt?: string; permissionMode?: string; label?: string }; requestId?: string }
   | { type: 'client.sendInput';   payload: { sessionId: string; text: string }; requestId?: string }
   | { type: 'client.kill';        payload: { sessionId: string }; requestId?: string }
-  | { type: 'client.listSessions'; payload: {}; requestId?: string };
+  | { type: 'client.listSessions'; payload: {}; requestId?: string }
+  | { type: 'client.resume'; payload: { sessionId: string }; requestId?: string };

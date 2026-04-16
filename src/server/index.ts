@@ -7,6 +7,7 @@ import { SessionManager } from './session/manager.js';
 import { NotificationEngine } from './notifications.js';
 import { Db } from './db.js';
 import { WsHub } from './ws/hub.js';
+import { TranscriptReader } from './session/transcript.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 7878);
@@ -20,7 +21,13 @@ db.markAllDetached();
 
 const manager = new SessionManager();
 const notifications = new NotificationEngine();
-const hub = new WsHub(manager, notifications, db);
+const transcripts = new TranscriptReader();
+const hub = new WsHub(manager, notifications, db, transcripts);
+
+// Hydrate detached sessions from SQLite so they appear in the dashboard
+for (const row of db.listSessions()) {
+  if (row.status === 'detached') manager.registerDetached(row);
+}
 
 // @fastify/websocket v10: handler receives (socket, request) directly
 app.get('/ws', { websocket: true }, (socket) => hub.attach(socket));

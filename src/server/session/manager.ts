@@ -3,12 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { SessionProcess, type SessionProcessOptions } from './process.js';
 import { initialState, reduce, type SessionState } from './state.js';
 import type { StreamEvent } from '../stream-json/types.js';
+import type { SessionRow } from '../db.js';
 
 export interface SessionHandle extends EventEmitter {
   id: string;
   state: SessionState;
   readonly eventLog: StreamEvent[]; // ring buffer
-  process: SessionProcess;
+  process: SessionProcess | null;
   send(text: string): void;
   kill(): void;
 }
@@ -18,6 +19,7 @@ export interface CreateSessionOpts {
   prompt?: string;
   permissionMode?: string;
   label?: string;
+  resumeSessionId?: string;
 }
 
 type SpawnOverride = (opts: CreateSessionOpts) => { command?: string; args?: string[] };
@@ -47,6 +49,7 @@ export class SessionManager extends EventEmitter {
       cwd: opts.cwd,
       prompt: opts.prompt,
       permissionMode: opts.permissionMode,
+      resumeSessionId: opts.resumeSessionId,
       ...this.opts.spawnOverride?.(opts),
     };
     const proc = new SessionProcess(processOpts);
@@ -102,5 +105,37 @@ export class SessionManager extends EventEmitter {
 
   kill(id: string): void {
     this.sessions.get(id)?.kill();
+  }
+
+  registerDetached(row: SessionRow): SessionHandle {
+    const handle = Object.assign(new EventEmitter(), {
+      id: row.id,
+      state: {
+        ...initialState(row.id, row.cwd),
+        status: 'detached' as const,
+        error: row.error,
+        lastActivityAt: row.last_event_at,
+      },
+      eventLog: [] as StreamEvent[],
+      process: null as SessionProcess | null,
+      send() { throw new Error('session is detached'); },
+      kill() { /* no-op */ },
+    }) as SessionHandle;
+    this.sessions.set(row.id, handle);
+    return handle;
+  }
+
+  resume(opts: { cwd: string; resumeSessionId: string; backlog?: StreamEvent[] }): SessionHandle {
+    // Remove any existing detached handle under this id before re-creating
+    this.sessions.delete(opts.resumeSessionId);
+    const handle = this.create({ cwd: opts.cwd, resumeSessionId: opts.resumeSessionId });
+    // Replay backlog through reducer before live events arrive
+    if (opts.backlog) {
+      for (const ev of opts.backlog) {
+        handle.state = reduce(handle.state, ev);
+        handle.eventLog.push(ev);
+      }
+    }
+    return handle;
   }
 }
