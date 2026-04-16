@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ServerEnvelope } from '../../server/ws/envelope';
-import { send, subscribe } from '../lib/ws';
+import { send, subscribe, subscribeConnection, type ConnectionState } from '../lib/ws';
 import type { SessionState } from '../../server/session/state';
 
 export { send };
@@ -11,12 +11,20 @@ export function useServerEvents(handler: (env: ServerEnvelope) => void): void {
   useEffect(() => subscribe((env) => ref.current(env)), []);
 }
 
+export function useConnection(): ConnectionState {
+  const [state, setState] = useState<ConnectionState>('connecting');
+  useEffect(() => subscribeConnection(setState), []);
+  return state;
+}
+
 export function useSessionList(): SessionState[] {
   const [sessions, setSessions] = useState<Map<string, SessionState>>(new Map());
+  const conn = useConnection();
 
+  // Refresh whenever we (re)connect — guarantees our view is in sync after a server restart.
   useEffect(() => {
-    send({ type: 'client.listSessions', payload: {} });
-  }, []);
+    if (conn === 'open') send({ type: 'client.listSessions', payload: {} });
+  }, [conn]);
 
   useServerEvents((env) => {
     switch (env.type) {

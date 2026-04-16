@@ -17,13 +17,13 @@ export class WsHub {
   ) {
     manager.on('created', (h) => this.broadcast({ type: 'session.created', payload: { state: h.state } }));
     manager.on('event', (h, ev) => {
-      this.db.upsertSession({ id: h.id, cwd: h.state.cwd, label: null, status: h.state.status });
+      this.db.upsertSession({ id: h.id, claudeSessionId: h.state.claudeSessionId, cwd: h.state.cwd, label: null, status: h.state.status });
       this.sendToSubscribers(h.id, { type: 'session.event', payload: { sessionId: h.id, event: ev } });
       this.broadcast({ type: 'session.updated', payload: { state: h.state } });
       notifications.handle(h.id, ev);
     });
     manager.on('ended', (h) => {
-      this.db.upsertSession({ id: h.id, cwd: h.state.cwd, label: null, status: h.state.status, error: h.state.error });
+      this.db.upsertSession({ id: h.id, claudeSessionId: h.state.claudeSessionId, cwd: h.state.cwd, label: null, status: h.state.status, error: h.state.error });
       this.broadcast({ type: 'session.ended', payload: { state: h.state } });
     });
     manager.on('deleted', (id: string) => {
@@ -83,12 +83,13 @@ export class WsHub {
           this.manager.delete(env.payload.sessionId);
           break;
         case 'client.resume': {
-          const id = env.payload.sessionId;
-          const existing = this.manager.get(id);
-          const cwd = existing?.state.cwd;
-          if (!cwd) return this.sendError(ws, 'no session metadata for resume', env.requestId);
-          const events = this.transcripts.readEvents(id);
-          const h = this.manager.resume({ cwd, resumeSessionId: id, backlog: events });
+          const uiId = env.payload.sessionId;
+          const existing = this.manager.get(uiId);
+          if (!existing) return this.sendError(ws, 'no session metadata for resume', env.requestId);
+          const claudeId = existing.state.claudeSessionId ?? uiId;
+          const cwd = existing.state.cwd;
+          const events = this.transcripts.readEvents(claudeId);
+          const h = this.manager.resume({ cwd, uiId, claudeSessionId: claudeId, backlog: events });
           this.send(ws, { type: 'session.created', payload: { state: h.state } });
           break;
         }

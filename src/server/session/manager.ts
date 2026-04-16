@@ -19,7 +19,8 @@ export interface CreateSessionOpts {
   prompt?: string;
   permissionMode?: string;
   label?: string;
-  resumeSessionId?: string;
+  resumeSessionId?: string;     // Claude's internal session id — forwarded to `claude --resume`.
+  presetUiId?: string;          // Keep this UI id for the new handle (used by Resume to reuse the detached card's id).
 }
 
 type SpawnOverride = (opts: CreateSessionOpts) => { command?: string; args?: string[] };
@@ -42,9 +43,10 @@ export class SessionManager extends EventEmitter {
   }
 
   create(opts: CreateSessionOpts): SessionHandle {
-    // When resuming, reuse the existing session id as the UI id so the card/URL stays stable.
-    // Otherwise mint a new UUID placeholder.
-    const localId = opts.resumeSessionId ?? randomUUID();
+    // Prefer the caller-provided UI id (used by Resume to keep the detached card's id).
+    // Otherwise, mint a new UUID — `resumeSessionId` (Claude's id) is never used as the UI id
+    // because the two namespaces can diverge for fresh launches.
+    const localId = opts.presetUiId ?? randomUUID();
     const ring: StreamEvent[] = [];
     const ringSize = this.opts.ringSize ?? 500;
     const processOpts: SessionProcessOptions = {
@@ -137,7 +139,9 @@ export class SessionManager extends EventEmitter {
       id: row.id,
       state: {
         ...initialState(row.id, row.cwd),
-        claudeSessionId: row.id,
+        // Older rows may not have claude_session_id persisted — fall back to the UI id, which
+        // matches Claude's id for sessions that were originally imported from ~/.claude/projects.
+        claudeSessionId: row.claude_session_id ?? row.id,
         status: 'detached' as const,
         error: row.error,
         lastActivityAt: row.last_event_at,
@@ -151,10 +155,14 @@ export class SessionManager extends EventEmitter {
     return handle;
   }
 
-  resume(opts: { cwd: string; resumeSessionId: string; backlog?: StreamEvent[] }): SessionHandle {
-    // Remove any existing detached handle under this id before re-creating
-    this.sessions.delete(opts.resumeSessionId);
-    const handle = this.create({ cwd: opts.cwd, resumeSessionId: opts.resumeSessionId });
+  resume(opts: { cwd: string; uiId: string; claudeSessionId: string; backlog?: StreamEvent[] }): SessionHandle {
+    // Replace any existing detached handle under the same UI id before re-creating.
+    this.sessions.delete(opts.uiId);
+    const handle = this.create({
+      cwd: opts.cwd,
+      presetUiId: opts.uiId,
+      resumeSessionId: opts.claudeSessionId,
+    });
     // Replay backlog through reducer before live events arrive
     if (opts.backlog) {
       for (const ev of opts.backlog) {

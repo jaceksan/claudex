@@ -4,7 +4,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { send, subscribe } from '../lib/ws';
-import { useSessionList } from '../hooks/use-ws';
+import { useConnection, useSessionList } from '../hooks/use-ws';
 import type { ServerEnvelope } from '../../server/ws/envelope';
 import type { SessionState } from '../../server/session/state';
 import type { StreamEvent } from '../../server/stream-json/types';
@@ -31,12 +31,21 @@ export default function SessionPage({ id }: { id: string }) {
   const [events, setEvents] = useState<StreamEvent[]>([]);
   const [streaming, setStreaming] = useState<string>('');
   const sessions = useSessionList();
+  const conn = useConnection();
   const [, navigate] = useLocation();
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // (Re-)subscribe whenever the session id changes OR the WS reconnects after a server restart.
   useEffect(() => {
+    if (conn !== 'open') return;
     setStreaming('');
     send({ type: 'client.subscribe', payload: { sessionId: id } });
+    return () => {
+      send({ type: 'client.unsubscribe', payload: { sessionId: id } });
+    };
+  }, [id, conn]);
+
+  useEffect(() => {
     const off = subscribe((env: ServerEnvelope) => {
       if (env.type === 'session.replay' && env.payload.state.sessionId === id) {
         setState(env.payload.state);
@@ -61,11 +70,11 @@ export default function SessionPage({ id }: { id: string }) {
         navigate('/');
       }
     });
-    return () => {
-      send({ type: 'client.unsubscribe', payload: { sessionId: id } });
-      off();
-    };
+    return off;
   }, [id]);
+
+  const detached = state?.status === 'detached';
+  const resume = () => send({ type: 'client.resume', payload: { sessionId: id } });
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -184,6 +193,20 @@ export default function SessionPage({ id }: { id: string }) {
             </div>
           )}
         </div>
+        {detached && (
+          <div className="border-b border-purple-500/30 bg-purple-950/20 px-6 py-3 flex items-center justify-between gap-3">
+            <div className="text-sm text-purple-100">
+              Session is detached — the Claude subprocess is no longer running (server restart or previous kill).
+              <span className="text-purple-300"> Click Resume to reattach and continue the conversation.</span>
+            </div>
+            <button
+              onClick={resume}
+              className="rounded bg-purple-600 px-3 py-1 text-sm font-medium hover:bg-purple-500"
+            >
+              Resume
+            </button>
+          </div>
+        )}
         <div ref={scrollRef} className="flex-1 overflow-auto px-6 py-4">
           {state ? (
             <div className="space-y-2">

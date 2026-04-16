@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 
 export interface SessionRow {
   id: string;
+  claude_session_id: string | null;
   cwd: string;
   label: string | null;
   status: string;
@@ -33,20 +34,34 @@ export class Db {
         value TEXT NOT NULL
       );
     `);
+    // Additive migration: older DBs predate claude_session_id.
+    const cols = (this.db.prepare("PRAGMA table_info(sessions)").all() as { name: string }[]).map((c) => c.name);
+    if (!cols.includes('claude_session_id')) {
+      this.db.exec('ALTER TABLE sessions ADD COLUMN claude_session_id TEXT');
+    }
   }
 
-  upsertSession(row: { id: string; cwd: string; label: string | null; status: string; error?: string | null }): void {
+  upsertSession(row: { id: string; claudeSessionId?: string | null; cwd: string; label: string | null; status: string; error?: string | null }): void {
     const now = Date.now();
     this.db.prepare(`
-      INSERT INTO sessions (id, cwd, label, status, created_at, last_event_at, error)
-      VALUES (@id, @cwd, @label, @status, @now, @now, @error)
+      INSERT INTO sessions (id, claude_session_id, cwd, label, status, created_at, last_event_at, error)
+      VALUES (@id, @claude, @cwd, @label, @status, @now, @now, @error)
       ON CONFLICT(id) DO UPDATE SET
+        claude_session_id = COALESCE(excluded.claude_session_id, sessions.claude_session_id),
         status = excluded.status,
         label = COALESCE(excluded.label, sessions.label),
         last_event_at = excluded.last_event_at,
         error = COALESCE(excluded.error, sessions.error),
         ended_at = CASE WHEN excluded.status IN ('ended','crashed') THEN excluded.last_event_at ELSE sessions.ended_at END
-    `).run({ ...row, now, error: row.error ?? null });
+    `).run({
+      id: row.id,
+      claude: row.claudeSessionId ?? null,
+      cwd: row.cwd,
+      label: row.label,
+      status: row.status,
+      now,
+      error: row.error ?? null,
+    });
   }
 
   listSessions(): SessionRow[] {
