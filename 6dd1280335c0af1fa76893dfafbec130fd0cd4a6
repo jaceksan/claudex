@@ -1,0 +1,29 @@
+src/web/public/favicon.svg
+  fc742e1a06a3e927 1
+README.md
+  fc742e1a06a3e927 1-54
+src/web/app.tsx
+  fc742e1a06a3e927 1,6,9-16
+src/web/index.html
+  fc742e1a06a3e927 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "6dd1280335c0af1fa76893dfafbec130fd0cd4a6",
+  "prompts": {
+    "fc742e1a06a3e927": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aab6a28d-f715-43a2-9170-8c1742cee733",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 66,
+      "total_deletions": 0,
+      "accepted_lines": 98,
+      "overriden_lines": 0
+    }
+  }
+}
