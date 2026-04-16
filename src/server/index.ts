@@ -13,6 +13,15 @@ import { getGitInfo } from './git.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 7878);
 
+// Keep the process alive + log loudly when something unexpected throws; otherwise
+// tsx watch leaves a dead server behind because it only restarts on file changes.
+process.on('unhandledRejection', (err) => {
+  console.error('[claudex] unhandledRejection', err);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[claudex] uncaughtException', err);
+});
+
 const app = Fastify({ logger: true });
 await app.register(fastifyWebsocket);
 
