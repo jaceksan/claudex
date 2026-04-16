@@ -1,0 +1,42 @@
+tests/notifications.test.ts
+  fc742e1a06a3e927 10,26,43,51
+src/server/notifications.ts
+  fc742e1a06a3e927 14-19,21,23-24,29,40,52
+src/server/session/manager.ts
+  fc742e1a06a3e927 102,114,160-162,165
+src/server/ws/hub.ts
+  fc742e1a06a3e927 24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "280014bd997ad5c9023995d8e0cbfb35e37642f1",
+  "prompts": {
+    "a6ed9d6363a6c71d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8e995871-192b-4832-98f2-4d6e6e724139",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "fc742e1a06a3e927": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aab6a28d-f715-43a2-9170-8c1742cee733",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 420,
+      "total_deletions": 57,
+      "accepted_lines": 1192,
+      "overriden_lines": 0
+    }
+  }
+}
