@@ -1,0 +1,25 @@
+src/server/notifications.ts
+  fc742e1a06a3e927 1-51
+tests/notifications.test.ts
+  fc742e1a06a3e927 1-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "acd6b021a8a7d98b6f72bc44a2be2d912514ae95",
+  "prompts": {
+    "fc742e1a06a3e927": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aab6a28d-f715-43a2-9170-8c1742cee733",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 109,
+      "total_deletions": 0,
+      "accepted_lines": 109,
+      "overriden_lines": 0
+    }
+  }
+}
