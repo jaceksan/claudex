@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"plan-1","cwd":"/tmp"}
+{"type":"assistant","session_id":"plan-1","message":{"id":"m1","role":"assistant","content":[{"type":"tool_use","id":"t1","name":"ExitPlanMode","input":{"plan":"1. Add /healthz route\n2. Return 200 OK\n3. Test it"}}],"usage":{"input_tokens":25,"output_tokens":10}}}
+{"type":"user","session_id":"plan-1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"plan accepted"}]}}
+{"type":"result","subtype":"success","session_id":"plan-1","is_error":false,"duration_ms":800,"num_turns":1,"total_cost_usd":0.0005}

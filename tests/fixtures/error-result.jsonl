@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"err-1","cwd":"/tmp"}
+{"type":"assistant","session_id":"err-1","message":{"id":"m1","role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"false"}}]}}
+{"type":"user","session_id":"err-1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"exit code 1","is_error":true}]}}
+{"type":"result","subtype":"error_during_execution","session_id":"err-1","is_error":true,"duration_ms":500}
