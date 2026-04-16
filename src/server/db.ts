@@ -82,6 +82,10 @@ export class Db {
     return row?.value ?? null;
   }
 
+  setLabel(id: string, label: string | null): void {
+    this.db.prepare('UPDATE sessions SET label=? WHERE id=?').run(label, id);
+  }
+
   deleteSession(id: string): void {
     this.db.prepare('DELETE FROM sessions WHERE id=?').run(id);
   }

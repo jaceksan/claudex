@@ -17,13 +17,17 @@ export class WsHub {
   ) {
     manager.on('created', (h) => this.broadcast({ type: 'session.created', payload: { state: h.state } }));
     manager.on('event', (h, ev) => {
-      this.db.upsertSession({ id: h.id, claudeSessionId: h.state.claudeSessionId, cwd: h.state.cwd, label: null, status: h.state.status });
+      this.db.upsertSession({ id: h.id, claudeSessionId: h.state.claudeSessionId, cwd: h.state.cwd, label: h.state.title, status: h.state.status });
       this.sendToSubscribers(h.id, { type: 'session.event', payload: { sessionId: h.id, event: ev } });
       this.broadcast({ type: 'session.updated', payload: { state: h.state } });
-      notifications.handle(h.id, ev);
+      notifications.handle(h, ev);
+    });
+    manager.on('updated', (h) => {
+      this.db.setLabel(h.id, h.state.title);
+      this.broadcast({ type: 'session.updated', payload: { state: h.state } });
     });
     manager.on('ended', (h) => {
-      this.db.upsertSession({ id: h.id, claudeSessionId: h.state.claudeSessionId, cwd: h.state.cwd, label: null, status: h.state.status, error: h.state.error });
+      this.db.upsertSession({ id: h.id, claudeSessionId: h.state.claudeSessionId, cwd: h.state.cwd, label: h.state.title, status: h.state.status, error: h.state.error });
       this.broadcast({ type: 'session.ended', payload: { state: h.state } });
     });
     manager.on('deleted', (id: string) => {
@@ -81,6 +85,9 @@ export class WsHub {
           break;
         case 'client.delete':
           this.manager.delete(env.payload.sessionId);
+          break;
+        case 'client.rename':
+          this.manager.setTitle(env.payload.sessionId, env.payload.title);
           break;
         case 'client.resume': {
           const uiId = env.payload.sessionId;

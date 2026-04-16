@@ -22,4 +22,5 @@ export type ClientEnvelope =
   | { type: 'client.interrupt';   payload: { sessionId: string }; requestId?: string }
   | { type: 'client.delete';      payload: { sessionId: string }; requestId?: string }
   | { type: 'client.listSessions'; payload: {}; requestId?: string }
-  | { type: 'client.resume'; payload: { sessionId: string }; requestId?: string };
+  | { type: 'client.resume'; payload: { sessionId: string }; requestId?: string }
+  | { type: 'client.rename'; payload: { sessionId: string; title: string | null }; requestId?: string };

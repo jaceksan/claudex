@@ -12,6 +12,30 @@ import { EventView } from '../components/event-view';
 import { Composer } from '../components/composer';
 import { GitBadge } from '../components/git-badge';
 import { useGitInfo } from '../hooks/use-git-info';
+import { statusColors, isBusy } from '../lib/status';
+
+function ThinkingIndicator({ since, label }: { since: number; label: string }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const secs = Math.max(0, Math.floor((now - since) / 1000));
+  const mm = Math.floor(secs / 60);
+  const ss = secs % 60;
+  const elapsed = mm > 0 ? `${mm}m ${ss}s` : `${ss}s`;
+  return (
+    <div className="flex items-center gap-3 rounded border border-blue-500/20 bg-blue-950/10 px-3 py-2 text-[13px] text-blue-200">
+      <span className="inline-flex gap-1" aria-hidden>
+        <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse [animation-delay:0ms]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse [animation-delay:150ms]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse [animation-delay:300ms]" />
+      </span>
+      <span>{label}…</span>
+      <span className="ml-auto font-mono text-[11px] text-blue-400/70">{elapsed}</span>
+    </div>
+  );
+}
 
 function handleStream(ev: StreamEvent, buf: string): string {
   if (ev.type !== 'stream_event') return buf;
@@ -87,7 +111,12 @@ export default function SessionPage({ id }: { id: string }) {
     <>
       <div className="font-mono text-sm text-zinc-300 truncate max-w-md" title={state.cwd}>{state.cwd}</div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-zinc-500">
-        <span>{state.status}</span>
+        <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset ${statusColors[state.status]}`}>
+          {isBusy(state.status) && (
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
+          )}
+          {state.status}
+        </span>
         <span>·</span>
         <span>${state.costUsd.toFixed(4)}</span>
         <span>·</span>
@@ -228,6 +257,9 @@ export default function SessionPage({ id }: { id: string }) {
                   </div>
                   <div className="mt-1 text-[10px] uppercase tracking-wide text-blue-400/70">streaming…</div>
                 </div>
+              )}
+              {isBusy(state.status) && !streaming && !state.currentTool && (
+                <ThinkingIndicator since={state.lastActivityAt} label={state.status === 'waiting-permission' ? 'waiting for permission' : state.status === 'starting' ? 'starting Claude' : 'Claude is thinking'} />
               )}
             </div>
           ) : (

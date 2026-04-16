@@ -126,6 +126,14 @@ export class SessionManager extends EventEmitter {
     this.sessions.get(id)?.kill();
   }
 
+  setTitle(id: string, title: string | null): void {
+    const h = this.sessions.get(id);
+    if (!h) return;
+    const clean = title?.trim();
+    h.state = { ...h.state, title: clean ? clean : null };
+    this.emit('updated', h);
+  }
+
   delete(id: string): void {
     const h = this.sessions.get(id);
     if (!h) return;
@@ -143,6 +151,7 @@ export class SessionManager extends EventEmitter {
         // null so the UI can mark them as non-resumable instead of passing the UI UUID to
         // `claude --resume` and getting a silent crash.
         claudeSessionId: row.claude_session_id,
+        title: row.label,
         status: 'detached' as const,
         error: row.error,
         lastActivityAt: row.last_event_at,
@@ -158,12 +167,14 @@ export class SessionManager extends EventEmitter {
 
   resume(opts: { cwd: string; uiId: string; claudeSessionId: string; backlog?: StreamEvent[] }): SessionHandle {
     // Replace any existing detached handle under the same UI id before re-creating.
+    const prevTitle = this.sessions.get(opts.uiId)?.state.title ?? null;
     this.sessions.delete(opts.uiId);
     const handle = this.create({
       cwd: opts.cwd,
       presetUiId: opts.uiId,
       resumeSessionId: opts.claudeSessionId,
     });
+    if (prevTitle) handle.state = { ...handle.state, title: prevTitle };
     // Replay backlog through reducer before live events arrive
     if (opts.backlog) {
       for (const ev of opts.backlog) {

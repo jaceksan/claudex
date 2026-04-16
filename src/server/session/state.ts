@@ -20,6 +20,7 @@ export interface SessionState {
   sessionId: string;         // Stable UI id (our UUID placeholder, or Claude's session_id when resuming from disk).
   claudeSessionId: string | null; // Claude's internal session_id — used for `claude --resume`.
   cwd: string;
+  title: string | null;      // User-supplied label; falls back to cwd basename in the UI.
   status: SessionStatus;
   lastAssistantText: string;
   currentTool: ToolCall | null;
@@ -37,6 +38,7 @@ export function initialState(sessionId: string, cwd: string): SessionState {
     sessionId,
     claudeSessionId: null,
     cwd,
+    title: null,
     status: 'starting',
     lastAssistantText: '',
     currentTool: null,

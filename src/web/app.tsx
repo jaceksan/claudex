@@ -1,9 +1,31 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Route, Link } from 'wouter';
 import DashboardPage from './pages/dashboard';
 import SessionPage from './pages/session';
 import { Toaster } from './components/toaster';
 import { useConnection, useSessionList } from './hooks/use-ws';
+
+function NotificationToggle() {
+  const supported = typeof Notification !== 'undefined';
+  const [perm, setPerm] = useState<NotificationPermission | 'unsupported'>(
+    supported ? Notification.permission : 'unsupported',
+  );
+  if (!supported || perm !== 'default') return null;
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        Notification.requestPermission()
+          .then((p) => setPerm(p))
+          .catch(() => {});
+      }}
+      className="rounded border border-zinc-700 px-2 py-0.5 text-xs text-zinc-300 hover:border-blue-500 hover:text-blue-300"
+      title="Enable desktop notifications"
+    >
+      🔔 Enable notifications
+    </button>
+  );
+}
 
 export default function App() {
   const sessions = useSessionList();
@@ -21,6 +43,7 @@ export default function App() {
         <Link href="/" className="font-semibold text-lg hover:text-blue-400">claudex</Link>
         <span className="text-xs text-zinc-500">multi-session dashboard</span>
         <span className="ml-auto flex items-center gap-2 text-xs">
+          <NotificationToggle />
           <span
             className={`inline-block h-2 w-2 rounded-full ${
               conn === 'open' ? 'bg-green-500' : conn === 'connecting' ? 'bg-amber-500' : 'bg-red-500'
