@@ -67,16 +67,19 @@ export class SessionManager extends EventEmitter {
       handle.state = reduce(handle.state, ev);
       ring.push(ev);
       if (ring.length > ringSize) ring.shift();
-      if (ev.type === 'system' && ev.subtype === 'init') {
-        const realId = ev.session_id;
-        if (realId !== handle.id) {
-          handle.id = realId;
-        }
-        if (!registered) {
-          this.sessions.set(handle.id, handle);
-          registered = true;
-          this.emit('created', handle);
-        }
+      // Claude emits several system subtypes (init, hook_started, hook_response, etc.)
+      // Register on the first event that carries a session_id so we work across versions/hooks.
+      const sid = (ev as { session_id?: string }).session_id;
+      if (sid && !registered) {
+        if (sid !== handle.id) handle.id = sid;
+        handle.state = {
+          ...handle.state,
+          sessionId: sid,
+          status: handle.state.status === 'starting' ? 'running' : handle.state.status,
+        };
+        this.sessions.set(handle.id, handle);
+        registered = true;
+        this.emit('created', handle);
       }
       handle.emit('event', ev);
       this.emit('event', handle, ev);
