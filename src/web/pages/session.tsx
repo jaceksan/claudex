@@ -28,6 +28,8 @@ export default function SessionPage({ id }: { id: string }) {
         && env.payload.state.sessionId === id
       ) {
         setState(env.payload.state);
+      } else if (env.type === 'session.deleted' && env.payload.sessionId === id) {
+        navigate('/');
       }
     });
     return () => {
@@ -81,12 +83,27 @@ export default function SessionPage({ id }: { id: string }) {
             <div className="min-w-0">{headerInfo}</div>
           </div>
           {state && (
-            <button
-              onClick={() => send({ type: 'client.kill', payload: { sessionId: id } })}
-              className="rounded bg-red-600/80 px-3 py-1 text-sm hover:bg-red-500"
-            >
-              Kill
-            </button>
+            <div className="flex gap-2">
+              {(state.status === 'running' || state.status === 'starting' || state.status === 'idle' || state.status === 'waiting-permission') && (
+                <button
+                  onClick={() => send({ type: 'client.kill', payload: { sessionId: id } })}
+                  className="rounded bg-red-600/80 px-3 py-1 text-sm hover:bg-red-500"
+                >
+                  Kill
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  if (confirm(`Delete session ${id.slice(0, 8)}?`)) {
+                    send({ type: 'client.delete', payload: { sessionId: id } });
+                    navigate('/');
+                  }
+                }}
+                className="rounded bg-zinc-700/70 px-3 py-1 text-sm text-zinc-200 hover:bg-red-600 hover:text-white"
+              >
+                Delete
+              </button>
+            </div>
           )}
         </div>
         <div className="flex-1 overflow-auto p-6">
@@ -104,7 +121,7 @@ export default function SessionPage({ id }: { id: string }) {
         </div>
         {state && (
           <>
-            <Composer sessionId={id} disabled={state.status === 'ended' || state.status === 'crashed'} />
+            <Composer sessionId={id} disabled={state.status === 'ended' || state.status === 'crashed' || state.status === 'detached'} />
             <BashPane events={events} />
           </>
         )}

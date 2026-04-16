@@ -105,9 +105,12 @@ export function reduce(state: SessionState, event: StreamEvent): SessionState {
     }
 
     case 'result': {
+      // A result event means the current turn finished — in multi-turn stream-json mode
+      // the subprocess stays alive waiting for the next user message. True end/crash is
+      // only known when the subprocess exits (handled in SessionManager).
       return {
         ...base,
-        status: event.is_error ? 'crashed' : 'ended',
+        status: 'idle',
         costUsd: event.total_cost_usd ?? base.costUsd,
       };
     }

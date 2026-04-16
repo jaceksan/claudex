@@ -65,6 +65,10 @@ export class SessionProcess extends EventEmitter {
 
     this.child.on('error', (err) => this.emit('error', err));
     this.child.on('exit', (code, signal) => this.emit('exit', code, signal));
+
+    // In stream-json input mode claude reads user messages from stdin,
+    // not from a trailing CLI arg. Deliver the initial prompt immediately.
+    if (this.opts.prompt) this.sendUserMessage(this.opts.prompt);
   }
 
   sendUserMessage(text: string): void {
@@ -89,10 +93,10 @@ export class SessionProcess extends EventEmitter {
   }
 
   private buildDefaultArgs(): string[] {
+    // Canonical multi-turn headless invocation. The initial prompt is sent over stdin in start().
     const args = ['-p', '--output-format', 'stream-json', '--input-format', 'stream-json', '--verbose'];
     if (this.opts.permissionMode) args.push('--permission-mode', this.opts.permissionMode);
     if (this.opts.resumeSessionId) args.push('--resume', this.opts.resumeSessionId);
-    if (this.opts.prompt) args.push(this.opts.prompt);
     return args;
   }
 }

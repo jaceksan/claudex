@@ -50,14 +50,27 @@ function SessionCard({ s }: { s: SessionState }) {
         {s.error && (
           <div className="mt-2 truncate text-xs text-red-400" title={s.error}>{s.error}</div>
         )}
-        {s.status === 'detached' && (
+        <div className="mt-2 flex gap-2">
+          {s.status === 'detached' && (
+            <button
+              onClick={(e) => { e.preventDefault(); send({ type: 'client.resume', payload: { sessionId: s.sessionId } }); }}
+              className="rounded bg-purple-600/80 px-2 py-1 text-xs font-medium hover:bg-purple-500"
+            >
+              Resume
+            </button>
+          )}
           <button
-            onClick={(e) => { e.preventDefault(); send({ type: 'client.resume', payload: { sessionId: s.sessionId } }); }}
-            className="mt-2 rounded bg-purple-600/80 px-2 py-1 text-xs font-medium hover:bg-purple-500"
+            onClick={(e) => {
+              e.preventDefault();
+              if (confirm(`Delete session ${s.sessionId.slice(0, 8)}?`)) {
+                send({ type: 'client.delete', payload: { sessionId: s.sessionId } });
+              }
+            }}
+            className="rounded bg-zinc-700/70 px-2 py-1 text-xs font-medium text-zinc-300 hover:bg-red-600 hover:text-white"
           >
-            Resume
+            Delete
           </button>
-        )}
+        </div>
       </div>
     </Link>
   );

@@ -28,6 +28,13 @@ export function useSessionList(): SessionState[] {
       case 'session.ended':
         setSessions((prev) => new Map(prev).set(env.payload.state.sessionId, env.payload.state));
         break;
+      case 'session.deleted':
+        setSessions((prev) => {
+          const next = new Map(prev);
+          next.delete(env.payload.sessionId);
+          return next;
+        });
+        break;
     }
   });
 

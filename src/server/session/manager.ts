@@ -122,6 +122,14 @@ export class SessionManager extends EventEmitter {
     this.sessions.get(id)?.kill();
   }
 
+  delete(id: string): void {
+    const h = this.sessions.get(id);
+    if (!h) return;
+    try { h.kill(); } catch { /* ignore */ }
+    this.sessions.delete(id);
+    this.emit('deleted', id);
+  }
+
   registerDetached(row: SessionRow): SessionHandle {
     const handle = Object.assign(new EventEmitter(), {
       id: row.id,

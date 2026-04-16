@@ -67,6 +67,10 @@ export class Db {
     return row?.value ?? null;
   }
 
+  deleteSession(id: string): void {
+    this.db.prepare('DELETE FROM sessions WHERE id=?').run(id);
+  }
+
   close(): void {
     this.db.close();
   }

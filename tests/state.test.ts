@@ -86,7 +86,7 @@ describe('reduce: tool_result and result', () => {
     expect(s1.error).toMatch(/boom/);
   });
 
-  it('result event transitions to ended/crashed and sets cost', () => {
+  it('result event transitions to idle (turn complete, subprocess still alive) and sets cost', () => {
     const s0: SessionState = { ...initialState('s', '/tmp'), status: 'running' };
     const s1 = reduce(s0, {
       type: 'result',
@@ -96,26 +96,18 @@ describe('reduce: tool_result and result', () => {
       duration_ms: 1000,
       total_cost_usd: 0.02,
     });
-    expect(s1.status).toBe('ended');
+    expect(s1.status).toBe('idle');
     expect(s1.costUsd).toBe(0.02);
-
-    const s2 = reduce(s0, {
-      type: 'result',
-      subtype: 'error_during_execution',
-      session_id: 's',
-      is_error: true,
-    });
-    expect(s2.status).toBe('crashed');
   });
 });
 
 describe('reduce: fixture replay', () => {
-  it('simple-chat ends with status=ended and non-empty lastAssistantText', () => {
+  it('simple-chat lands on status=idle and non-empty lastAssistantText after final result', () => {
     const content = readFileSync(join(__dirname, 'fixtures/simple-chat.jsonl'), 'utf8');
     const { events } = parseBuffer(content);
     let s = initialState('pending', '/tmp');
     for (const ev of events) s = reduce(s, ev);
-    expect(s.status).toBe('ended');
+    expect(s.status).toBe('idle');
     expect(s.lastAssistantText.length).toBeGreaterThan(0);
   });
 
@@ -127,11 +119,12 @@ describe('reduce: fixture replay', () => {
     expect(s.planText).not.toBeNull();
   });
 
-  it('error-result ends with status=crashed', () => {
+  it('error-result fixture records the error and ends at idle (subprocess exit decides ended/crashed)', () => {
     const content = readFileSync(join(__dirname, 'fixtures/error-result.jsonl'), 'utf8');
     const { events } = parseBuffer(content);
     let s = initialState('pending', '/tmp');
     for (const ev of events) s = reduce(s, ev);
-    expect(s.status).toBe('crashed');
+    expect(s.status).toBe('idle');
+    expect(s.error).toMatch(/exit code 1/);
   });
 });

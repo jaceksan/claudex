@@ -26,6 +26,10 @@ export class WsHub {
       this.db.upsertSession({ id: h.id, cwd: h.state.cwd, label: null, status: h.state.status, error: h.state.error });
       this.broadcast({ type: 'session.ended', payload: { state: h.state } });
     });
+    manager.on('deleted', (id: string) => {
+      this.db.deleteSession(id);
+      this.broadcast({ type: 'session.deleted', payload: { sessionId: id } });
+    });
     notifications.on('notification', (n) => this.broadcast({ type: 'notification', payload: n }));
   }
 
@@ -71,6 +75,9 @@ export class WsHub {
         }
         case 'client.kill':
           this.manager.kill(env.payload.sessionId);
+          break;
+        case 'client.delete':
+          this.manager.delete(env.payload.sessionId);
           break;
         case 'client.resume': {
           const id = env.payload.sessionId;
