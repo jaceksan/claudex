@@ -51,3 +51,87 @@ describe('reduce', () => {
     expect(s1.lastAssistantText).toBe('Hello world');
   });
 });
+
+describe('reduce: tool_result and result', () => {
+  it('user tool_result clears currentTool and increments completedTools', () => {
+    const s0: SessionState = {
+      ...initialState('s', '/tmp'),
+      status: 'running',
+      currentTool: { id: 't1', name: 'Bash', input: {}, startedAt: 0 },
+    };
+    const s1 = reduce(s0, {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }],
+      },
+    });
+    expect(s1.currentTool).toBeNull();
+    expect(s1.completedTools).toBe(1);
+  });
+
+  it('tool_result with is_error records error status', () => {
+    const s0: SessionState = {
+      ...initialState('s', '/tmp'),
+      status: 'running',
+      currentTool: { id: 't1', name: 'Bash', input: {}, startedAt: 0 },
+    };
+    const s1 = reduce(s0, {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: 't1', content: 'boom', is_error: true }],
+      },
+    });
+    expect(s1.error).toMatch(/boom/);
+  });
+
+  it('result event transitions to ended/crashed and sets cost', () => {
+    const s0: SessionState = { ...initialState('s', '/tmp'), status: 'running' };
+    const s1 = reduce(s0, {
+      type: 'result',
+      subtype: 'success',
+      session_id: 's',
+      is_error: false,
+      duration_ms: 1000,
+      total_cost_usd: 0.02,
+    });
+    expect(s1.status).toBe('ended');
+    expect(s1.costUsd).toBe(0.02);
+
+    const s2 = reduce(s0, {
+      type: 'result',
+      subtype: 'error_during_execution',
+      session_id: 's',
+      is_error: true,
+    });
+    expect(s2.status).toBe('crashed');
+  });
+});
+
+describe('reduce: fixture replay', () => {
+  it('simple-chat ends with status=ended and non-empty lastAssistantText', () => {
+    const content = readFileSync(join(__dirname, 'fixtures/simple-chat.jsonl'), 'utf8');
+    const { events } = parseBuffer(content);
+    let s = initialState('pending', '/tmp');
+    for (const ev of events) s = reduce(s, ev);
+    expect(s.status).toBe('ended');
+    expect(s.lastAssistantText.length).toBeGreaterThan(0);
+  });
+
+  it('plan-mode produces a non-null planText', () => {
+    const content = readFileSync(join(__dirname, 'fixtures/plan-mode.jsonl'), 'utf8');
+    const { events } = parseBuffer(content);
+    let s = initialState('pending', '/tmp');
+    for (const ev of events) s = reduce(s, ev);
+    expect(s.planText).not.toBeNull();
+  });
+
+  it('error-result ends with status=crashed', () => {
+    const content = readFileSync(join(__dirname, 'fixtures/error-result.jsonl'), 'utf8');
+    const { events } = parseBuffer(content);
+    let s = initialState('pending', '/tmp');
+    for (const ev of events) s = reduce(s, ev);
+    expect(s.status).toBe('crashed');
+  });
+});
