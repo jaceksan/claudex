@@ -4,6 +4,7 @@ import type { ServerEnvelope } from '../../server/ws/envelope';
 import type { SessionState } from '../../server/session/state';
 import type { StreamEvent } from '../../server/stream-json/types';
 import { EventView } from '../components/event-view';
+import { BashPane } from '../components/bash-pane';
 
 export default function SessionPage({ id }: { id: string }) {
   const [state, setState] = useState<SessionState | null>(null);
@@ -57,6 +58,7 @@ export default function SessionPage({ id }: { id: string }) {
           {events.map((ev, i) => <EventView key={i} event={ev} />)}
         </div>
       </div>
+      <BashPane events={events} />
     </div>
   );
 }
