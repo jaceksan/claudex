@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { Route, Link } from 'wouter';
 import DashboardPage from './pages/dashboard';
 import SessionPage from './pages/session';
-import { Toaster } from './components/toaster';
 import { useConnection, useSessionList } from './hooks/use-ws';
+import { useNotifications } from './hooks/use-notifications';
 
 function NotificationToggle() {
   const supported = typeof Notification !== 'undefined';
@@ -30,6 +30,8 @@ function NotificationToggle() {
 export default function App() {
   const sessions = useSessionList();
   const conn = useConnection();
+  // Keep OS-notification side-effect alive even though in-app Toaster is removed.
+  useNotifications();
   const running = sessions.filter(
     (s) => s.status === 'running' || s.status === 'starting' || s.status === 'waiting-permission',
   ).length;
@@ -61,7 +63,6 @@ export default function App() {
         <Route path="/" component={DashboardPage} />
         <Route path="/session/:id">{(params) => <SessionPage id={params.id} />}</Route>
       </main>
-      <Toaster />
     </div>
   );
 }

@@ -13,7 +13,7 @@ It's a thin, local wrapper around the official CLI: no API re-implementation, no
 - **One pane, many agents.** Live dashboard with status, current tool, cost, token usage, parse errors and git state per session.
 - **Rich session view.** Markdown with syntax highlighting, side-by-side diffs for `Edit`, file previews for `Write`, plan cards for `ExitPlanMode`, collapsible tool calls and results, streaming as it happens.
 - **Git worktree isolation.** Tick one checkbox in the launcher and claudex cuts a fresh branch off HEAD in a throwaway worktree under `~/.claudex/worktrees/` — safe to run many sessions on the same repo in parallel. Branch name and origin are shown on the dashboard card and session header; worktrees are garbage-collected when the session is deleted.
-- **Broadcast.** Multi-select session cards on the dashboard, type a prompt once, dispatch it to every selected agent in parallel. The thing you can't do in a terminal.
+- **Topic dashboard (preview).** Sessions are grouped into topics — one card per work item, sorted by activity. Topic detail and the new-topic modal land in the next plan.
 - **Reset.** Wipe a session's context and start a fresh subprocess in place — same card, same cwd, blank slate — without losing the dashboard slot.
 - **Slash-command autocomplete.** Type `/` to search every built-in command, user command, user skill and plugin skill on your machine. Two-tier ranking (prefix → substring), keyboard-driven, scrollable — no truncation.
 - **OS notifications.** Click-through to the session that fired them. Sessions can finish in the background while you work elsewhere.
@@ -61,6 +61,7 @@ Then open http://localhost:5173. Backend runs on `:7878`; Vite proxies `/api` an
 
 - Localhost only; no auth. Don't expose the port.
 - Single-user — assumes one human driving from one browser.
+- Broadcast (parallel prompt dispatch) removed in Plan 2; parallel-attempt launching will return in Task 7 / Plan 3 as part of the topic workflow.
 
 ## Architecture
 
