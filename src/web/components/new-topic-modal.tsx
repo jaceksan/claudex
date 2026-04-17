@@ -105,7 +105,10 @@ export function NewTopicModal({ onClose }: { onClose: () => void }) {
           <span className="text-zinc-300">Repo</span>
           <select value={repoId} onChange={(e) => setRepoId(e.target.value)} className="mt-1 w-full rounded bg-zinc-800 px-3 py-2 text-sm outline-none ring-1 ring-zinc-700 focus:ring-blue-500" disabled={repos.length === 0}>
             {repos.length === 0 ? <option value="">(register a repo first)</option> : null}
-            {repos.map((r) => <option key={r.id} value={r.id}>{r.canonicalOwner}/{r.canonicalName || r.path}</option>)}
+            {repos.map((r) => {
+              const label = r.canonicalOwner && r.canonicalName ? `${r.canonicalOwner}/${r.canonicalName}` : r.path;
+              return <option key={r.id} value={r.id}>{label}</option>;
+            })}
           </select>
         </label>
         <div className="mb-3 text-right">
