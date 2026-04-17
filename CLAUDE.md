@@ -69,7 +69,13 @@ Persistence: `sessions.worktree_origin` and `sessions.worktree_branch` (additive
 
 Cleanup: `manager.delete()` calls `removeWorktree(origin, path)` after killing the subprocess. That runs `git worktree remove --force <path>` and falls back to `git worktree prune` + `rm -rf` if the repo object is already gone. Don't leak these directories — they accumulate fast.
 
-## 7. Verification commands before claiming done
+## 7. Keep README.md in sync with user-visible features
+
+Any commit that adds or alters a user-visible feature — a new launcher option, dashboard control, slash command, WS envelope type, session lifecycle verb, OS-notification kind — MUST also update the "Why use it" bullets in `README.md` in the **same commit**. The README is claudex's sales pitch; if it's stale a new user can't tell what the app does.
+
+A `PreToolUse` hook (`.claude/hooks/check-readme.sh`) enforces this: it inspects `git commit` calls and blocks them when a file under `src/web/{pages,components}/` or any of `src/server/{ws/envelope.ts, commands.ts, worktree.ts, notifications.ts}` is staged without `README.md`. For pure bugfixes, refactors, or internal plumbing prefix the commit with `CLAUDEX_SKIP_README=1 git commit …` to bypass. The bypass is an escape hatch, not a habit — if you find yourself reaching for it on feature work, the rule above is being violated.
+
+## 8. Verification commands before claiming done
 
 ```bash
 cd /home/jacek/work/src/claudex
@@ -81,14 +87,14 @@ npm run build:web     # only if web/ was touched
 
 All four must pass. Builds can succeed while Vitest picks up a bug, and vice versa.
 
-## 8. When to invoke Superpowers skills
+## 9. When to invoke Superpowers skills
 
 - `test-driven-development` — new backend components (reducers, stream-json parsing, session lifecycle).
 - `verification-before-completion` — before declaring any task done. The `client.rename` case that wasn't wired was exactly this failure.
 - `systematic-debugging` — when a user session is in a weird state. Pull the transcript from `~/.claude/projects/**/<claudeId>.jsonl` and the SQLite row before guessing.
 - `brainstorming` → `writing-plans` → `executing-plans`/`subagent-driven-development` — only for genuinely new features (Slack bot, worktree mode, permission UI). Small fixes don't need the ceremony.
 
-## 9. Repo layout crib
+## 10. Repo layout crib
 
 ```
 src/server/
