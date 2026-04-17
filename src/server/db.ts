@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { ensureSchema } from './schema';
+import { ensureSchema } from './schema.js';
 
 export interface SessionRow {
   id: string;
