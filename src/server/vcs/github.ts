@@ -43,7 +43,9 @@ export class GitHubAdapter implements VcsAdapter {
       number: j.number, url: j.url, title: j.title, body: j.body, state: j.state,
       baseBranch: j.baseRefName, headBranch: j.headRefName,
       author: j.author?.login ?? '', mergeable: j.mergeable === 'MERGEABLE' ? true : j.mergeable === 'CONFLICTING' ? false : null,
-      approvalsCount: 0, requiredApprovals: j.reviewDecision === 'APPROVED' ? 0 : 1,
+      // TODO: populate from review nodes when needed.
+      approvalsCount: 0, // TODO: query branch-protection for real required-approvals count; MVP defaults to 1.
+      requiredApprovals: 1,
     };
   }
 
@@ -85,7 +87,7 @@ export class GitHubAdapter implements VcsAdapter {
   }
 
   async listChecks(cwd: string, ref: string): Promise<Check[]> {
-    const out = await this.gh(['api', `repos/{owner}/{repo}/commits/${ref}/check-runs`], cwd);
+    const out = await this.gh(['api', `repos/{owner}/{repo}/commits/${ref}/check-runs`, '--paginate'], cwd);
     const j = JSON.parse(out);
     return (j.check_runs as Array<{ name: string; status: Check['status']; conclusion: Check['conclusion']; id: number; html_url: string; started_at: string | null; completed_at: string | null }>).map((r) => ({
       name: r.name, status: r.status, conclusion: r.conclusion,
