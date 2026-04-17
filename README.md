@@ -52,7 +52,12 @@ Then open http://localhost:5173. Backend runs on `:7878`; Vite proxies `/api` an
 
 ## Roadmap
 
-- **Slack integration.** Receive notifications in Slack and reply from a thread to drive the matching session — useful when you're away from the laptop or want async collaborators.
+- **Topic detail + PR lifecycle.** Per-topic page with timeline, tasks, review comments and CI panels. Create PR, Address feedback, Fix CI, Merge — all from claudex. See `docs/superpowers/specs/2026-04-17-worktree-topic-task-ux-design.md`.
+- **Conflict resolution with AI narrative review.** Sync with main; on conflicts spawn a rebase task that reports a short summary + explicit uncertainties, letting a non-tech user accept/reject without reading diffs.
+- **Flaky CI triage & auto-restart.** Distinguish infrastructure flakes from real failures; rerun flakies rather than "fixing" them.
+- **GitLab support.** `VcsAdapter` is interface-ready; `GitLabAdapter` over `glab` ships after the GitHub path lands.
+- **Slack notifications.** Reuse the OS-notification contract for absent operators and async reviewers.
+- **Permissions / multi-user non-tech access.** Current design is single-operator localhost. A safe auth model for invited non-tech collaborators is a follow-up investigation — the door is kept open in the data model and UI.
 - **Live Bash command progress.** Today each command's output arrives in one chunk when the tool returns. Waiting on Claude Code to surface streaming tool stdout; we'll wire it through as soon as it lands.
 - **Desktop app.** A small Tauri/Electron shell so claudex starts on login, lives in the tray, and dispatches notifications natively without a browser tab.
 - **In-browser permission UI.** Approve/deny tool calls from the dashboard instead of the terminal — required before claudex can host a session you're not actively babysitting.
@@ -61,7 +66,7 @@ Then open http://localhost:5173. Backend runs on `:7878`; Vite proxies `/api` an
 
 - Localhost only; no auth. Don't expose the port.
 - Single-user — assumes one human driving from one browser.
-- Broadcast (parallel prompt dispatch) removed in Plan 2; parallel-attempt launching will return in Task 7 / Plan 3 as part of the topic workflow.
+- Broadcast (parallel prompt dispatch across unrelated sessions) was removed; parallel work now happens within a topic via multiple attempts, landing fully in the next plan.
 
 ## Architecture
 
