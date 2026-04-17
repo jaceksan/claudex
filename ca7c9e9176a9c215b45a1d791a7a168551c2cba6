@@ -1,0 +1,37 @@
+tests/fixtures/gh-output/pr-view.json
+  7a240c56656ec247 1
+tests/fixtures/gh-output/required-checks.json
+  7a240c56656ec247 1
+tests/fixtures/gh-output/repo-view-fork.json
+  7a240c56656ec247 1
+src/server/vcs/github.ts
+  7a240c56656ec247 1-114
+tests/fixtures/gh-output/review-threads.json
+  7a240c56656ec247 1
+tests/vcs-github.test.ts
+  7a240c56656ec247 1-89
+tests/fixtures/gh-output/check-runs.json
+  7a240c56656ec247 1
+tests/fixtures/gh-output/repo-view.json
+  7a240c56656ec247 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "ca7c9e9176a9c215b45a1d791a7a168551c2cba6",
+  "prompts": {
+    "7a240c56656ec247": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28cd815a-90e4-4f16-b2c1-5aacb321a562",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 209,
+      "total_deletions": 0,
+      "accepted_lines": 209,
+      "overriden_lines": 0
+    }
+  }
+}
