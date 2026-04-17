@@ -1,0 +1,25 @@
+docs/superpowers/specs/2026-04-17-worktree-topic-task-ux-design.md
+  7a240c56656ec247 1-543
+.gitignore
+  7a240c56656ec247 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "e8482be91dbb6c31b120440a0cdb517dddd44bf5",
+  "prompts": {
+    "7a240c56656ec247": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28cd815a-90e4-4f16-b2c1-5aacb321a562",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 782,
+      "total_deletions": 0,
+      "accepted_lines": 782,
+      "overriden_lines": 0
+    }
+  }
+}
