@@ -303,6 +303,14 @@ export default function SessionPage({ id }: { id: string }) {
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
                 <span className="font-mono truncate max-w-md text-zinc-400" title={state.cwd}>{state.cwd}</span>
+                {state.worktreeBranch && (
+                  <span
+                    className="rounded bg-emerald-900/40 px-1.5 py-0.5 font-mono text-[11px] text-emerald-300 ring-1 ring-inset ring-emerald-700/60"
+                    title={`worktree off ${state.worktreeOrigin}`}
+                  >
+                    🌿 {state.worktreeBranch}
+                  </span>
+                )}
                 <span className="text-zinc-700">·</span>
                 <span title="Cumulative cost across all resumes of this session">
                   ${(state.baselineCostUsd + state.costUsd).toFixed(4)}

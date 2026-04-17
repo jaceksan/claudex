@@ -4,6 +4,7 @@ import { SessionProcess, type SessionProcessOptions } from './process.js';
 import { DEFAULT_EFFORT, initialState, reduce, type EffortLevel, type SessionState } from './state.js';
 import type { StreamEvent } from '../stream-json/types.js';
 import type { SessionRow } from '../db.js';
+import { createWorktree, removeWorktree, type WorktreeInfo } from '../worktree.js';
 
 export interface SessionHandle extends EventEmitter {
   id: string;
@@ -22,6 +23,9 @@ export interface CreateSessionOpts {
   effort?: EffortLevel;
   resumeSessionId?: string;     // Claude's internal session id — forwarded to `claude --resume`.
   presetUiId?: string;          // Keep this UI id for the new handle (used by Resume to reuse the detached card's id).
+  useWorktree?: boolean;        // Launch this session in a fresh git worktree off opts.cwd.
+  /** Pre-created worktree metadata — set internally when rehydrating. */
+  worktree?: WorktreeInfo;
 }
 
 type SpawnOverride = (opts: CreateSessionOpts) => { command?: string; args?: string[] };
@@ -51,8 +55,18 @@ export class SessionManager extends EventEmitter {
     const ring: StreamEvent[] = [];
     const ringSize = this.opts.ringSize ?? 500;
     const effort = opts.effort ?? DEFAULT_EFFORT;
+
+    // Worktree setup happens before spawning claude so the subprocess's cwd is the worktree.
+    // `opts.worktree` is set when restart() wants to reuse the existing worktree; otherwise
+    // `useWorktree` triggers a fresh `git worktree add`. Failure bubbles up to the WS hub.
+    let worktree: WorktreeInfo | null = opts.worktree ?? null;
+    if (!worktree && opts.useWorktree) {
+      worktree = createWorktree(opts.cwd, localId, opts.label ?? null);
+    }
+    const effectiveCwd = worktree ? worktree.path : opts.cwd;
+
     const processOpts: SessionProcessOptions = {
-      cwd: opts.cwd,
+      cwd: effectiveCwd,
       permissionMode: opts.permissionMode,
       resumeSessionId: opts.resumeSessionId,
       effort,
@@ -64,10 +78,12 @@ export class SessionManager extends EventEmitter {
     const handle = Object.assign(new EventEmitter(), {
       id: localId,
       state: {
-        ...initialState(localId, opts.cwd),
+        ...initialState(localId, effectiveCwd),
         claudeSessionId: opts.resumeSessionId ?? null,
         title: opts.label?.trim() || null,
         effort,
+        worktreeOrigin: worktree?.origin ?? null,
+        worktreeBranch: worktree?.branch ?? null,
       },
       eventLog: ring,
       process: proc,
@@ -124,7 +140,15 @@ export class SessionManager extends EventEmitter {
     this.sessions.set(handle.id, handle);
     this.emit('created', handle);
     proc.start();
-    if (opts.prompt) handle.send(opts.prompt);
+    if (opts.prompt) {
+      handle.send(opts.prompt);
+    } else {
+      // No initial prompt — claude --input-format stream-json is silent until stdin (see
+      // CLAUDE.md §5). Without this, the UI hangs on "starting Claude…" forever. Mark idle
+      // so the composer is enabled; the first user message will wake the subprocess.
+      handle.state = { ...handle.state, status: 'idle' };
+      this.emit('updated', handle);
+    }
     return handle;
   }
 
@@ -160,7 +184,7 @@ export class SessionManager extends EventEmitter {
   restart(id: string): SessionHandle | undefined {
     const h = this.sessions.get(id);
     if (!h) return undefined;
-    const { cwd, title, effort } = h.state;
+    const { cwd, title, effort, worktreeOrigin, worktreeBranch } = h.state;
     // Drop the handle from the map before killing so the old subprocess's exit listener
     // doesn't broadcast a stale 'crashed' update for this id. Then spawn a fresh subprocess
     // under the same UI id with NO `--resume` flag — new claudeSessionId, empty context.
@@ -171,6 +195,11 @@ export class SessionManager extends EventEmitter {
       presetUiId: id,
       effort,
       label: title ?? undefined,
+      // Reset preserves the worktree — we want the same branch and working tree, just a
+      // fresh conversation on top of it.
+      worktree: worktreeOrigin && worktreeBranch
+        ? { origin: worktreeOrigin, branch: worktreeBranch, path: cwd }
+        : undefined,
     });
     // Same trick as resume(): a fresh `claude --input-format stream-json` subprocess emits no
     // system:init until the first stdin message arrives, so leaving status='starting' freezes
@@ -190,6 +219,11 @@ export class SessionManager extends EventEmitter {
     this.sessions.delete(id);
     this.emit('deleted', id);
     try { h.kill(); } catch { /* ignore */ }
+    const { worktreeOrigin, cwd } = h.state;
+    if (worktreeOrigin) {
+      // Fire-and-forget; any git lock contention with the dying subprocess resolves quickly.
+      try { removeWorktree(worktreeOrigin, cwd); } catch { /* ignore */ }
+    }
   }
 
   registerDetached(row: SessionRow): SessionHandle {
@@ -209,6 +243,8 @@ export class SessionManager extends EventEmitter {
         baselineCostUsd: row.cum_cost ?? 0,
         baselineTokens: { input: row.cum_in ?? 0, output: row.cum_out ?? 0 },
         turns: row.turns ?? 0,
+        worktreeOrigin: row.worktree_origin,
+        worktreeBranch: row.worktree_branch,
       },
       eventLog: [] as StreamEvent[],
       process: null as SessionProcess | null,

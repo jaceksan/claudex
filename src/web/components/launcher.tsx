@@ -18,8 +18,9 @@ export function LauncherModal({ onClose }: { onClose: () => void }) {
   const [cwd, setCwd] = useState('');
   const [title, setTitle] = useState('');
   const [prompt, setPrompt] = useState('');
-  const [mode, setMode] = useState<typeof MODES[number]>('default');
+  const [mode, setMode] = useState<typeof MODES[number]>('acceptEdits');
   const [effort, setEffort] = useState<typeof EFFORTS[number]>('medium');
+  const [useWorktree, setUseWorktree] = useState(false);
   const [recent, setRecent] = useState<string[]>([]);
 
   useEffect(() => { setRecent(loadRecent()); }, []);
@@ -32,9 +33,10 @@ export function LauncherModal({ onClose }: { onClose: () => void }) {
       payload: {
         cwd: cwd.trim(),
         prompt: prompt.trim() || undefined,
-        permissionMode: mode === 'default' ? undefined : mode,
+        permissionMode: mode,
         label: title.trim() || undefined,
         effort,
+        useWorktree: useWorktree || undefined,
       },
     });
     onClose();
@@ -103,6 +105,21 @@ export function LauncherModal({ onClose }: { onClose: () => void }) {
           >
             {EFFORTS.map((e) => <option key={e} value={e}>{e}</option>)}
           </select>
+        </label>
+
+        <label className="mt-4 flex cursor-pointer items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={useWorktree}
+            onChange={(e) => setUseWorktree(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-blue-500"
+          />
+          <span>
+            <span className="text-zinc-300">Run in a fresh git worktree</span>
+            <span className="block text-xs text-zinc-500">
+              Creates a new branch off HEAD and isolates this session's changes from the main working tree — safe to run multiple sessions on the same repo in parallel.
+            </span>
+          </span>
         </label>
 
         <div className="mt-6 flex justify-end gap-2">

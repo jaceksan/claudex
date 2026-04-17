@@ -15,7 +15,9 @@ const FAKE_ARGS = [
 describe('SessionManager', () => {
   it('creates a session, tracks state, and cleans up on exit', async () => {
     const mgr = new SessionManager({ spawnOverride: () => ({ command: FAKE_CMD, args: FAKE_ARGS }) });
-    const s = mgr.create({ cwd: process.cwd() });
+    // Pass a prompt so the manager doesn't apply the no-prompt 'idle' fallback that
+    // works around claude's silent-until-stdin behavior.
+    const s = mgr.create({ cwd: process.cwd(), prompt: 'ping' });
     expect(s.state.status).toBe('starting');
     await once(s, 'ended');
     expect(s.state.status).toBe('ended');

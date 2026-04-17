@@ -15,6 +15,8 @@ export interface SessionRow {
   cum_in: number;
   cum_out: number;
   turns: number;
+  worktree_origin: string | null;
+  worktree_branch: string | null;
 }
 
 export class Db {
@@ -53,6 +55,11 @@ export class Db {
         this.db.exec(`ALTER TABLE sessions ADD COLUMN ${col} ${type} NOT NULL DEFAULT 0`);
       }
     }
+    for (const col of ['worktree_origin', 'worktree_branch']) {
+      if (!cols.includes(col)) {
+        this.db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
+      }
+    }
   }
 
   setUsage(id: string, cumCost: number, cumIn: number, cumOut: number, turns: number): void {
@@ -64,11 +71,11 @@ export class Db {
     this.db.prepare('UPDATE sessions SET claude_session_id=NULL WHERE id=?').run(id);
   }
 
-  upsertSession(row: { id: string; claudeSessionId?: string | null; cwd: string; label: string | null; status: string; effort?: string | null; error?: string | null }): void {
+  upsertSession(row: { id: string; claudeSessionId?: string | null; cwd: string; label: string | null; status: string; effort?: string | null; error?: string | null; worktreeOrigin?: string | null; worktreeBranch?: string | null }): void {
     const now = Date.now();
     this.db.prepare(`
-      INSERT INTO sessions (id, claude_session_id, cwd, label, status, created_at, last_event_at, error, effort)
-      VALUES (@id, @claude, @cwd, @label, @status, @now, @now, @error, COALESCE(@effort, 'medium'))
+      INSERT INTO sessions (id, claude_session_id, cwd, label, status, created_at, last_event_at, error, effort, worktree_origin, worktree_branch)
+      VALUES (@id, @claude, @cwd, @label, @status, @now, @now, @error, COALESCE(@effort, 'medium'), @worktreeOrigin, @worktreeBranch)
       ON CONFLICT(id) DO UPDATE SET
         claude_session_id = COALESCE(excluded.claude_session_id, sessions.claude_session_id),
         status = excluded.status,
@@ -76,6 +83,8 @@ export class Db {
         last_event_at = excluded.last_event_at,
         error = COALESCE(excluded.error, sessions.error),
         effort = COALESCE(excluded.effort, sessions.effort),
+        worktree_origin = COALESCE(excluded.worktree_origin, sessions.worktree_origin),
+        worktree_branch = COALESCE(excluded.worktree_branch, sessions.worktree_branch),
         ended_at = CASE WHEN excluded.status IN ('ended','crashed') THEN excluded.last_event_at ELSE sessions.ended_at END
     `).run({
       id: row.id,
@@ -86,6 +95,8 @@ export class Db {
       now,
       error: row.error ?? null,
       effort: row.effort ?? null,
+      worktreeOrigin: row.worktreeOrigin ?? null,
+      worktreeBranch: row.worktreeBranch ?? null,
     });
   }
 

@@ -74,6 +74,13 @@ function SessionCard({ s, selectMode, selected, onToggle }: CardProps) {
           <div className="truncate font-mono text-sm text-zinc-300" title={s.cwd}>{s.cwd}</div>
         )}
       </div>
+      {s.worktreeBranch && (
+        <div className="mt-1 flex items-center gap-1 text-xs text-emerald-300" title={`worktree off ${s.worktreeOrigin}`}>
+          <span className="rounded bg-emerald-900/40 px-1.5 py-0.5 ring-1 ring-inset ring-emerald-700/60">
+            🌿 {s.worktreeBranch}
+          </span>
+        </div>
+      )}
       {git?.isRepo && <div className="mt-1"><GitBadge info={git} compact /></div>}
       <div className="mt-3 grid grid-cols-2 gap-x-2 gap-y-1 text-xs text-zinc-400">
         <div>Tool: <span className="text-zinc-200">{s.currentTool?.name ?? '—'}</span></div>

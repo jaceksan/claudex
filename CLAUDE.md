@@ -57,7 +57,19 @@ Never mix them. In particular, `claude --resume <UI UUID>` hits the `"No convers
 - Pre-flight before spawning with `--resume`: `TranscriptReader.findTranscript(claudeSessionId)` must return a path. If not, return an error envelope — don't let Claude crash the subprocess, because its failed result will get persisted.
 - Sessions that were killed mid-turn sometimes show up with the transcript file present but Claude still says `"No conversation found"`. In practice they're often still resumable if you provide a prompt; if not, the session is dead and must be deleted.
 
-## 6. Verification commands before claiming done
+## 6. Worktree sessions
+
+Launcher has a "Run in a fresh git worktree" checkbox. When set, `SessionManager.create` calls `createWorktree()` which:
+
+- runs `git rev-parse --show-toplevel` on the chosen cwd to find the source repo (fails fast if it's not a repo),
+- `git worktree add -b claudex/<slug?>-<short-uiId> ~/.claudex/worktrees/<uiId>` off HEAD,
+- rewrites the session's cwd to the new worktree path before spawning `claude`.
+
+Persistence: `sessions.worktree_origin` and `sessions.worktree_branch` (additive SQLite columns). `registerDetached` hydrates these fields so the dashboard can show the branch even for detached rows. `restart()` (Reset) reuses the existing worktree — same branch, fresh conversation — by passing the preserved info back into `create()` via `opts.worktree`.
+
+Cleanup: `manager.delete()` calls `removeWorktree(origin, path)` after killing the subprocess. That runs `git worktree remove --force <path>` and falls back to `git worktree prune` + `rm -rf` if the repo object is already gone. Don't leak these directories — they accumulate fast.
+
+## 7. Verification commands before claiming done
 
 ```bash
 cd /home/jacek/work/src/claudex
@@ -69,14 +81,14 @@ npm run build:web     # only if web/ was touched
 
 All four must pass. Builds can succeed while Vitest picks up a bug, and vice versa.
 
-## 7. When to invoke Superpowers skills
+## 8. When to invoke Superpowers skills
 
 - `test-driven-development` — new backend components (reducers, stream-json parsing, session lifecycle).
 - `verification-before-completion` — before declaring any task done. The `client.rename` case that wasn't wired was exactly this failure.
 - `systematic-debugging` — when a user session is in a weird state. Pull the transcript from `~/.claude/projects/**/<claudeId>.jsonl` and the SQLite row before guessing.
 - `brainstorming` → `writing-plans` → `executing-plans`/`subagent-driven-development` — only for genuinely new features (Slack bot, worktree mode, permission UI). Small fixes don't need the ceremony.
 
-## 8. Repo layout crib
+## 9. Repo layout crib
 
 ```
 src/server/

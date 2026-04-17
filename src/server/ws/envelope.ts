@@ -16,7 +16,7 @@ export type ServerEnvelope =
 export type ClientEnvelope =
   | { type: 'client.subscribe';   payload: { sessionId: string }; requestId?: string }
   | { type: 'client.unsubscribe'; payload: { sessionId: string }; requestId?: string }
-  | { type: 'client.launch';      payload: { cwd: string; prompt?: string; permissionMode?: string; label?: string; effort?: EffortLevel }; requestId?: string }
+  | { type: 'client.launch';      payload: { cwd: string; prompt?: string; permissionMode?: string; label?: string; effort?: EffortLevel; useWorktree?: boolean }; requestId?: string }
   | { type: 'client.sendInput';   payload: { sessionId: string; text: string }; requestId?: string }
   | { type: 'client.kill';        payload: { sessionId: string }; requestId?: string }
   | { type: 'client.restart';     payload: { sessionId: string }; requestId?: string }

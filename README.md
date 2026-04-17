@@ -8,6 +8,7 @@ It's a thin, local wrapper around the official CLI: no API re-implementation, no
 
 - **One pane, many agents.** Live dashboard with status, current tool, cost, token usage, parse errors and git state per session.
 - **Rich session view.** Markdown with syntax highlighting, side-by-side diffs for `Edit`, file previews for `Write`, plan cards for `ExitPlanMode`, collapsible tool calls and results, streaming as it happens.
+- **Git worktree isolation.** Tick one checkbox in the launcher and claudex cuts a fresh branch off HEAD in a throwaway worktree under `~/.claudex/worktrees/` — safe to run many sessions on the same repo in parallel. Branch name and origin are shown on the dashboard card and session header; worktrees are garbage-collected when the session is deleted.
 - **Broadcast.** Multi-select session cards on the dashboard, type a prompt once, dispatch it to every selected agent in parallel. The thing you can't do in a terminal.
 - **Reset.** Wipe a session's context and start a fresh subprocess in place — same card, same cwd, blank slate — without losing the dashboard slot.
 - **Slash-command autocomplete.** Type `/` to search every built-in command, user command, user skill and plugin skill on your machine. Two-tier ranking (prefix → substring), keyboard-driven, scrollable — no truncation.
@@ -50,7 +51,6 @@ Then open http://localhost:5173. Backend runs on `:7878`; Vite proxies `/api` an
 - **Slack integration.** Receive notifications in Slack and reply from a thread to drive the matching session — useful when you're away from the laptop or want async collaborators.
 - **Live Bash command progress.** Today each command's output arrives in one chunk when the tool returns. Waiting on Claude Code to surface streaming tool stdout; we'll wire it through as soon as it lands.
 - **Desktop app.** A small Tauri/Electron shell so claudex starts on login, lives in the tray, and dispatches notifications natively without a browser tab.
-- **Worktree isolation.** Spawn each session in a fresh `git worktree` so parallel agents can't trample each other's working trees.
 - **In-browser permission UI.** Approve/deny tool calls from the dashboard instead of the terminal — required before claudex can host a session you're not actively babysitting.
 
 ## Limitations

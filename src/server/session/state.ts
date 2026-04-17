@@ -45,6 +45,9 @@ export interface SessionState {
   planText: string | null;
   error: string | null;
   effort: EffortLevel;
+  /** Set when the session runs in a claudex-managed git worktree. Null for regular sessions. */
+  worktreeOrigin: string | null;
+  worktreeBranch: string | null;
 }
 
 export function initialState(sessionId: string, cwd: string): SessionState {
@@ -67,6 +70,8 @@ export function initialState(sessionId: string, cwd: string): SessionState {
     planText: null,
     error: null,
     effort: DEFAULT_EFFORT,
+    worktreeOrigin: null,
+    worktreeBranch: null,
   };
 }
 

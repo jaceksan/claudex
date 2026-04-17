@@ -18,7 +18,7 @@ export class WsHub {
   ) {
     manager.on('created', (h) => this.broadcast({ type: 'session.created', payload: { state: h.state } }));
     manager.on('event', (h, ev) => {
-      this.db.upsertSession({ id: h.id, claudeSessionId: h.state.claudeSessionId, cwd: h.state.cwd, label: h.state.title, status: h.state.status, effort: h.state.effort });
+      this.db.upsertSession({ id: h.id, claudeSessionId: h.state.claudeSessionId, cwd: h.state.cwd, label: h.state.title, status: h.state.status, effort: h.state.effort, worktreeOrigin: h.state.worktreeOrigin, worktreeBranch: h.state.worktreeBranch });
       const s = h.state;
       this.db.setUsage(
         h.id,
@@ -37,7 +37,7 @@ export class WsHub {
       this.broadcast({ type: 'session.updated', payload: { state: h.state } });
     });
     manager.on('ended', (h) => {
-      this.db.upsertSession({ id: h.id, claudeSessionId: h.state.claudeSessionId, cwd: h.state.cwd, label: h.state.title, status: h.state.status, effort: h.state.effort, error: h.state.error });
+      this.db.upsertSession({ id: h.id, claudeSessionId: h.state.claudeSessionId, cwd: h.state.cwd, label: h.state.title, status: h.state.status, effort: h.state.effort, error: h.state.error, worktreeOrigin: h.state.worktreeOrigin, worktreeBranch: h.state.worktreeBranch });
       this.broadcast({ type: 'session.ended', payload: { state: h.state } });
     });
     manager.on('deleted', (id: string) => {
@@ -78,11 +78,18 @@ export class WsHub {
           this.subs.get(ws)?.delete(env.payload.sessionId);
           break;
         case 'client.launch': {
-          const { effort, ...rest } = env.payload;
-          this.manager.create({
-            ...rest,
-            effort: effort && isEffortLevel(effort) ? effort : undefined,
-          });
+          const { effort, useWorktree, ...rest } = env.payload;
+          try {
+            this.manager.create({
+              ...rest,
+              useWorktree,
+              effort: effort && isEffortLevel(effort) ? effort : undefined,
+            });
+          } catch (e) {
+            // Worktree creation is the most common failure here — surface it so the user
+            // knows why their session didn't launch instead of staring at an empty dashboard.
+            return this.sendError(ws, (e as Error).message, env.requestId);
+          }
           break;
         }
         case 'client.sendInput': {
