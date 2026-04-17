@@ -1,0 +1,45 @@
+src/server/ws/envelope.ts
+  fc742e1a06a3e927 19
+src/server/session/manager.ts
+  fc742e1a06a3e927 7,26-28,58-67,69,81,85-86,143-151,187,198-202,222-226,246-247
+src/server/worktree.ts
+  fc742e1a06a3e927 1-56
+src/web/pages/dashboard.tsx
+  fc742e1a06a3e927 77-83
+src/server/db.ts
+  fc742e1a06a3e927 18-19,58-62,74,77-78,86-87,98-99
+src/server/session/state.ts
+  fc742e1a06a3e927 48-50,73-74
+src/web/components/launcher.tsx
+  fc742e1a06a3e927 21,23,36,39,110-124
+src/server/ws/hub.ts
+  fc742e1a06a3e927 21,40,81-92
+CLAUDE.md
+  fc742e1a06a3e927 60-72,84,91
+src/web/pages/session.tsx
+  fc742e1a06a3e927 306-313
+README.md
+  fc742e1a06a3e927 11
+tests/session-manager.test.ts
+  fc742e1a06a3e927 18-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "ae88713f2c81879747c2096e79fcf0a739fc1bf4",
+  "prompts": {
+    "fc742e1a06a3e927": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aab6a28d-f715-43a2-9170-8c1742cee733",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 140,
+      "total_deletions": 36,
+      "accepted_lines": 1447,
+      "overriden_lines": 0
+    }
+  }
+}
