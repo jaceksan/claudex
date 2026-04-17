@@ -71,6 +71,23 @@ describe('reduce: tool_result and result', () => {
     expect(s1.completedTools).toBe(1);
   });
 
+  it('successful tool_result clears a prior error', () => {
+    const s0: SessionState = {
+      ...initialState('s', '/tmp'),
+      status: 'running',
+      error: 'previous boom',
+      currentTool: { id: 't2', name: 'Bash', input: {}, startedAt: 0 },
+    };
+    const s1 = reduce(s0, {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: 't2', content: 'ok' }],
+      },
+    });
+    expect(s1.error).toBeNull();
+  });
+
   it('tool_result with is_error records error status', () => {
     const s0: SessionState = {
       ...initialState('s', '/tmp'),

@@ -130,6 +130,8 @@ export function reduce(state: SessionState, event: StreamEvent): SessionState {
           if (block.is_error) {
             const text = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
             error = text;
+          } else {
+            error = null;
           }
         }
       }
