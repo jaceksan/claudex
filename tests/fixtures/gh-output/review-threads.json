@@ -1,0 +1,1 @@
+{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"id":"thread-1","isResolved":false,"comments":{"nodes":[{"body":"Null-check missing","path":"a.ts","line":42,"author":{"login":"alice","id":"U_1"}}]}},{"id":"thread-2","isResolved":true,"comments":{"nodes":[{"body":"Missing null check.","path":"b.tsx","line":18,"author":{"login":"cursor[bot]"}}]}}]}}}}}
