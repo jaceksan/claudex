@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import type { VcsAdapter } from './vcs/adapter';
+import type { VcsAdapter } from './vcs/adapter.js';
 
 export async function getOrFetchGithubLogin(db: Database.Database, adapter: VcsAdapter): Promise<string> {
   const row = db.prepare('SELECT github_login FROM user WHERE singleton=1').get() as { github_login: string | null } | undefined;

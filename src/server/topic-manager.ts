@@ -1,9 +1,9 @@
 import type Database from 'better-sqlite3';
-import type { RepoStore } from './repo';
-import type { TopicStore, TopicTemplate } from './topic';
-import type { TaskStore } from './task';
-import { renderBranchTemplate } from './branch-template';
-import { slugify } from './slug';
+import type { RepoStore } from './repo.js';
+import type { TopicStore, TopicTemplate } from './topic.js';
+import type { TaskStore } from './task.js';
+import { renderBranchTemplate } from './branch-template.js';
+import { slugify } from './slug.js';
 
 export interface SpawnedSession { id: string; }
 export type Git = (args: string[], cwd?: string) => Promise<string>;

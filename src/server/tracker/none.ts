@@ -1,4 +1,4 @@
-import type { TrackerAdapter } from './adapter';
+import type { TrackerAdapter } from './adapter.js';
 
 export class NoneAdapter implements TrackerAdapter {
   readonly kind = 'none' as const;

@@ -1,5 +1,5 @@
-import type { TrackerAdapter } from './adapter';
-import { NoneAdapter } from './none';
+import type { TrackerAdapter } from './adapter.js';
+import { NoneAdapter } from './none.js';
 
 export type TrackerKind = 'jira' | 'youtrack' | 'linear' | 'none';
 

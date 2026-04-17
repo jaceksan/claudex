@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { VcsAdapter, PR, RepoSummary, ReviewThread, Check } from './adapter';
+import type { VcsAdapter, PR, RepoSummary, ReviewThread, Check } from './adapter.js';
 
 const execFileP = promisify(execFile);
 
