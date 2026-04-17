@@ -1,0 +1,29 @@
+src/server/slug.ts
+  7a240c56656ec247 1-3
+src/server/branch-template.ts
+  7a240c56656ec247 1-8
+tests/branch-template.test.ts
+  7a240c56656ec247 1-23
+tests/slug.test.ts
+  7a240c56656ec247 1-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "b89c442bb97d4b6ac786760185d9263ec1668697",
+  "prompts": {
+    "7a240c56656ec247": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28cd815a-90e4-4f16-b2c1-5aacb321a562",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 52,
+      "total_deletions": 7,
+      "accepted_lines": 45,
+      "overriden_lines": 0
+    }
+  }
+}
