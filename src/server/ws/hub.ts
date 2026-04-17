@@ -282,7 +282,7 @@ export class WsHub {
     this.send(ws, { type: 'error', payload: { message, requestId } });
   }
 
-  private broadcast(env: ServerEnvelope): void {
+  broadcast(env: ServerEnvelope): void {
     for (const ws of this.clients) this.send(ws, env);
   }
 

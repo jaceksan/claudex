@@ -2,6 +2,32 @@ import { useEffect, useState } from 'react';
 import { send, subscribe } from '../lib/ws';
 import { useRepos } from '../hooks/use-repos';
 
+function RegisterRepoInline({ onRegistered }: { onRegistered: () => void }) {
+  const [path, setPath] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function submit() {
+    if (!path.trim() || busy) return;
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch('/api/repo/register', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: path.trim() }) });
+      if (!r.ok) { const body = await r.json().catch(() => ({})); throw new Error((body as { error?: string }).error ?? r.statusText); }
+      onRegistered();
+    } catch (e) { setErr((e as Error).message); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div className="my-2 rounded border border-zinc-700 bg-zinc-800 p-2 text-xs">
+      <div className="mb-1 text-zinc-400">Register a repo</div>
+      <div className="flex gap-2">
+        <input value={path} onChange={(e) => setPath(e.target.value)} placeholder="/absolute/path/to/repo" className="flex-1 rounded bg-zinc-900 px-2 py-1 outline-none ring-1 ring-zinc-700 focus:ring-blue-500" />
+        <button onClick={submit} disabled={!path.trim() || busy} className="rounded bg-blue-600 px-2 py-1 font-medium text-white disabled:opacity-40">{busy ? '…' : 'Register'}</button>
+      </div>
+      {err && <div className="mt-1 text-red-300">{err}</div>}
+    </div>
+  );
+}
+
 const TEMPLATES = [
   { id: 'quick-fix', title: 'Quick fix', blurb: 'Typo/tiny bug. Auto-accept + auto-PR.' },
   { id: 'standard', title: 'Standard', blurb: 'Normal feature/bugfix. Manual accept.' },
@@ -15,6 +41,7 @@ export function NewTopicModal({ onClose }: { onClose: () => void }) {
   const repos = useRepos();
   const [template, setTemplate] = useState<'quick-fix' | 'standard' | 'exploration'>('standard');
   const [repoId, setRepoId] = useState('');
+  const [showRegister, setShowRegister] = useState(false);
   const [title, setTitle] = useState('');
   const [ticketKey, setTicketKey] = useState('');
   const [prompt, setPrompt] = useState('');
@@ -74,13 +101,21 @@ export function NewTopicModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        <label className="mb-3 block text-sm">
+        <label className="mb-1 block text-sm">
           <span className="text-zinc-300">Repo</span>
           <select value={repoId} onChange={(e) => setRepoId(e.target.value)} className="mt-1 w-full rounded bg-zinc-800 px-3 py-2 text-sm outline-none ring-1 ring-zinc-700 focus:ring-blue-500" disabled={repos.length === 0}>
             {repos.length === 0 ? <option value="">(register a repo first)</option> : null}
             {repos.map((r) => <option key={r.id} value={r.id}>{r.canonicalOwner}/{r.canonicalName || r.path}</option>)}
           </select>
         </label>
+        <div className="mb-3 text-right">
+          <button type="button" onClick={() => setShowRegister((v) => !v)} className="text-xs text-blue-400 hover:underline">
+            {showRegister ? '— hide' : '+ Add repo'}
+          </button>
+        </div>
+        {(showRegister || repos.length === 0) && (
+          <RegisterRepoInline onRegistered={() => setShowRegister(false)} />
+        )}
 
         <label className="mb-3 block text-sm">
           <span className="text-zinc-300">Title</span>

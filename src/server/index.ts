@@ -17,7 +17,7 @@ import { TopicManager } from './topic-manager.js';
 import { RepoStore } from './repo.js';
 import { TopicStore } from './topic.js';
 import { TaskStore } from './task.js';
-import { createWorktree } from './worktree.js';
+import { createWorktree, resolveGitRoot } from './worktree.js';
 import { getOrFetchGithubLogin } from './identity.js';
 import { GitHubAdapter } from './vcs/github.js';
 
@@ -86,6 +86,36 @@ app.get<{ Params: { id: string } }>('/api/sessions/:id/git', async (req, reply) 
   if (!h) return reply.code(404).send({ error: 'no such session' });
   const info = await getGitInfo(h.state.cwd);
   return info;
+});
+
+app.post('/api/repo/register', async (req, reply) => {
+  const body = req.body as { path: string } | undefined;
+  if (!body?.path) return reply.code(400).send({ error: 'path required' });
+  const root = resolveGitRoot(body.path);
+  if (!root) return reply.code(400).send({ error: 'not a git repo' });
+  const existing = repos.getByPath(root);
+  if (existing) return reply.send(existing);
+  try {
+    const adapter = new GitHubAdapter();
+    const summary = await adapter.getRepo(root);
+    const isFork = !!summary.parentOwner;
+    const repo = repos.register({
+      path: root, vcsKind: 'github',
+      canonicalRemote: isFork ? 'upstream' : 'origin',
+      forkRemote: 'origin',
+      defaultBranch: summary.defaultBranch,
+      canonicalOwner: isFork ? summary.parentOwner : summary.owner,
+      canonicalName: isFork ? summary.parentName : summary.name,
+      forkOwner: summary.owner, forkName: summary.name,
+    });
+    hub.broadcast({ type: 'server.repo.state', payload: { repos: repos.list().map((r) => ({
+      id: r.id, path: r.path, vcsKind: r.vcsKind, defaultBranch: r.defaultBranch,
+      canonicalOwner: r.canonicalOwner, canonicalName: r.canonicalName,
+    })) } });
+    return reply.send(repo);
+  } catch (e) {
+    return reply.code(400).send({ error: (e as Error).message });
+  }
 });
 
 const webDist = path.resolve(__dirname, '../web');
