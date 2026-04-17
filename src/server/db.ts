@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { ensureSchema } from './schema';
 
 export interface SessionRow {
   id: string;
@@ -24,42 +25,7 @@ export class Db {
 
   constructor(path: string) {
     this.db = new Database(path);
-    this.db.pragma('journal_mode = WAL');
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS sessions (
-        id TEXT PRIMARY KEY,
-        cwd TEXT NOT NULL,
-        label TEXT,
-        status TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        ended_at INTEGER,
-        last_event_at INTEGER NOT NULL,
-        error TEXT
-      );
-      CREATE TABLE IF NOT EXISTS prefs (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      );
-    `);
-    // Additive migration: older DBs predate claude_session_id.
-    const cols = (this.db.prepare("PRAGMA table_info(sessions)").all() as { name: string }[]).map((c) => c.name);
-    if (!cols.includes('claude_session_id')) {
-      this.db.exec('ALTER TABLE sessions ADD COLUMN claude_session_id TEXT');
-    }
-    if (!cols.includes('effort')) {
-      this.db.exec("ALTER TABLE sessions ADD COLUMN effort TEXT NOT NULL DEFAULT 'medium'");
-    }
-    for (const col of ['cum_cost', 'cum_in', 'cum_out', 'turns']) {
-      if (!cols.includes(col)) {
-        const type = col === 'cum_cost' ? 'REAL' : 'INTEGER';
-        this.db.exec(`ALTER TABLE sessions ADD COLUMN ${col} ${type} NOT NULL DEFAULT 0`);
-      }
-    }
-    for (const col of ['worktree_origin', 'worktree_branch']) {
-      if (!cols.includes(col)) {
-        this.db.exec(`ALTER TABLE sessions ADD COLUMN ${col} TEXT`);
-      }
-    }
+    ensureSchema(this.db);
   }
 
   setUsage(id: string, cumCost: number, cumIn: number, cumOut: number, turns: number): void {
