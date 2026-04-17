@@ -3,6 +3,8 @@ import fastifyWebsocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { SessionManager } from './session/manager.js';
 import { NotificationEngine } from './notifications.js';
 import { Db } from './db.js';
@@ -11,6 +13,13 @@ import { TranscriptReader } from './session/transcript.js';
 import { getGitInfo } from './git.js';
 import { getCommands } from './commands.js';
 import { runMigrations } from './migration.js';
+import { TopicManager } from './topic-manager.js';
+import { RepoStore } from './repo.js';
+import { TopicStore } from './topic.js';
+import { TaskStore } from './task.js';
+import { createWorktree } from './worktree.js';
+import { getOrFetchGithubLogin } from './identity.js';
+import { GitHubAdapter } from './vcs/github.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 7878);
@@ -32,10 +41,30 @@ const db = new Db(dbPath);
 runMigrations(db.underlying());
 db.markAllDetached();
 
+const execFileP = promisify(execFile);
+
 const manager = new SessionManager();
 const notifications = new NotificationEngine();
 const transcripts = new TranscriptReader();
-const hub = new WsHub(manager, notifications, db, transcripts);
+
+const repos = new RepoStore(db.underlying());
+const topics = new TopicStore(db.underlying());
+const tasks = new TaskStore(db.underlying());
+
+const topicManager = new TopicManager({
+  db: db.underlying(),
+  repos, topics, tasks,
+  git: async (args, cwd) => execFileP('git', args, { cwd: cwd ?? process.cwd() }).then((r) => r.stdout),
+  createWorktree: (cwd, id, opts) => createWorktree(cwd, id, opts),
+  spawnSession: async ({ cwd, label, prompt, effort, permissionMode }) => {
+    const s = manager.create({ cwd, label: label ?? undefined, prompt, effort: effort as Parameters<typeof manager.create>[0]['effort'], permissionMode });
+    return { id: s.id };
+  },
+  now: () => Date.now(),
+  githubLogin: async () => getOrFetchGithubLogin(db.underlying(), new GitHubAdapter()),
+});
+
+const hub = new WsHub(manager, notifications, db, transcripts, { topicManager, repos, topics, tasks, rawDb: db.underlying() });
 
 // Hydrate detached sessions from SQLite so they appear in the dashboard
 for (const row of db.listSessions()) {

@@ -1,6 +1,9 @@
 import type { StreamEvent } from '../stream-json/types.js';
 import type { SessionState, EffortLevel } from '../session/state.js';
 import type { Notification } from '../notifications.js';
+import type { TopicClientMessage, TopicServerMessage } from './topic-envelope.js';
+
+export type { TopicClientMessage, TopicServerMessage } from './topic-envelope.js';
 
 export type ServerEnvelope =
   | { type: 'session.created'; payload: { state: SessionState } }
@@ -11,7 +14,8 @@ export type ServerEnvelope =
   | { type: 'session.list';    payload: { sessions: SessionState[] } }
   | { type: 'session.replay';  payload: { state: SessionState; events: StreamEvent[] } }
   | { type: 'notification';    payload: Notification }
-  | { type: 'error';           payload: { message: string; requestId?: string } };
+  | { type: 'error';           payload: { message: string; requestId?: string } }
+  | TopicServerMessage;
 
 export type ClientEnvelope =
   | { type: 'client.subscribe';   payload: { sessionId: string }; requestId?: string }
@@ -25,4 +29,5 @@ export type ClientEnvelope =
   | { type: 'client.listSessions'; payload: {}; requestId?: string }
   | { type: 'client.resume'; payload: { sessionId: string }; requestId?: string }
   | { type: 'client.rename'; payload: { sessionId: string; title: string | null }; requestId?: string }
-  | { type: 'client.setEffort'; payload: { sessionId: string; effort: EffortLevel }; requestId?: string };
+  | { type: 'client.setEffort'; payload: { sessionId: string; effort: EffortLevel }; requestId?: string }
+  | TopicClientMessage;

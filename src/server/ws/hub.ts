@@ -4,18 +4,69 @@ import type { NotificationEngine } from '../notifications.js';
 import type { Db } from '../db.js';
 import type { ClientEnvelope, ServerEnvelope } from './envelope.js';
 import type { TranscriptReader } from '../session/transcript.js';
+import type { TopicManager } from '../topic-manager.js';
+import type { RepoStore } from '../repo.js';
+import type { TopicStore } from '../topic.js';
+import type { TaskStore } from '../task.js';
+import type { TopicCard } from './topic-envelope.js';
+import type Database from 'better-sqlite3';
 import { isEffortLevel } from '../session/state.js';
+
+export interface TopicDeps {
+  topicManager: TopicManager;
+  repos: RepoStore;
+  topics: TopicStore;
+  tasks: TaskStore;
+  rawDb: Database.Database;
+}
+
+function topicTaskSummary(tasks: TaskStore, rawDb: Database.Database, topicId: string) {
+  const rows = tasks.listByTopic(topicId);
+  let running = 0, accepted = 0, discarded = 0;
+  for (const t of rows) {
+    const s = rawDb.prepare('SELECT status FROM sessions WHERE id=?').get(t.sessionId) as { status?: string } | undefined;
+    if (t.acceptedAt) accepted++;
+    else if (t.discardedAt) discarded++;
+    else if (s?.status === 'running') running++;
+  }
+  return { running, accepted, discarded };
+}
+
+function buildTopicState(deps: TopicDeps): ServerEnvelope {
+  const repoList = deps.repos.list();
+  const topicCards: TopicCard[] = [];
+  for (const repo of repoList) {
+    const repoTopics = deps.topics.listByRepo(repo.id);
+    for (const topic of repoTopics) {
+      const taskSummary = topicTaskSummary(deps.tasks, deps.rawDb, topic.id);
+      const lastTask = deps.tasks.listByTopic(topic.id)[0];
+      const lastEventAt = lastTask
+        ? (deps.rawDb.prepare('SELECT last_event_at FROM sessions WHERE id=?').get(lastTask.sessionId) as { last_event_at?: number } | undefined)?.last_event_at ?? topic.createdAt
+        : topic.createdAt;
+      topicCards.push({
+        id: topic.id, repoId: topic.repoId, phase: topic.phase,
+        template: topic.template, ticketKey: topic.ticketKey,
+        title: topic.title, topicBranch: topic.topicBranch,
+        prNumber: topic.prNumber, taskSummary, lastEventAt,
+      });
+    }
+  }
+  return { type: 'server.topic.state', payload: { topics: topicCards } };
+}
 
 export class WsHub {
   private readonly clients = new Set<WebSocket>();
   private readonly subs = new Map<WebSocket, Set<string>>(); // ws -> sessionIds
+  private topicDeps: TopicDeps | null = null;
 
   constructor(
     private readonly manager: SessionManager,
     private readonly notifications: NotificationEngine,
     private readonly db: Db,
     private readonly transcripts: TranscriptReader,
+    topicDeps?: TopicDeps,
   ) {
+    if (topicDeps) this.topicDeps = topicDeps;
     manager.on('created', (h) => this.broadcast({ type: 'session.created', payload: { state: h.state } }));
     manager.on('event', (h, ev) => {
       this.db.upsertSession({ id: h.id, claudeSessionId: h.state.claudeSessionId, cwd: h.state.cwd, label: h.state.title, status: h.state.status, effort: h.state.effort, worktreeOrigin: h.state.worktreeOrigin, worktreeBranch: h.state.worktreeBranch });
@@ -128,6 +179,67 @@ export class WsHub {
           if (!isEffortLevel(env.payload.effort)) return this.sendError(ws, 'invalid effort level', env.requestId);
           this.manager.setEffort(env.payload.sessionId, env.payload.effort);
           break;
+        case 'client.topic.create': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          const { repoId, template, title, ticketKey, typeField, project, firstTask } = env.payload;
+          td.topicManager.create({
+            repoId, template, title, ticketKey, type: typeField, project, firstTask,
+          }).then(({ topic, task }) => {
+            this.broadcast({ type: 'server.topic.created', payload: { topicId: topic.id, sessionId: task.sessionId } });
+            this.broadcast(buildTopicState(td));
+          }).catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'create' } });
+          });
+          break;
+        }
+        case 'client.topic.addAttempt': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          const { topicId, ...attemptArgs } = env.payload;
+          td.topicManager.addAttempt(topicId, attemptArgs).then(() => {
+            this.broadcast(buildTopicState(td));
+          }).catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'addAttempt' } });
+          });
+          break;
+        }
+        case 'client.topic.accept': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          td.topicManager.acceptAttempt(env.payload.sessionId).then(() => {
+            this.broadcast(buildTopicState(td));
+          }).catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'accept' } });
+          });
+          break;
+        }
+        case 'client.topic.discard': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          td.topicManager.discardAttempt(env.payload.sessionId).then(() => {
+            this.broadcast(buildTopicState(td));
+          }).catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'discard' } });
+          });
+          break;
+        }
+        case 'client.topic.list': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          this.send(ws, buildTopicState(td));
+          break;
+        }
+        case 'client.repo.list': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          const repos = td.repos.list().map((r) => ({
+            id: r.id, path: r.path, vcsKind: r.vcsKind, defaultBranch: r.defaultBranch,
+            canonicalOwner: r.canonicalOwner, canonicalName: r.canonicalName,
+          }));
+          this.send(ws, { type: 'server.repo.state', payload: { repos } });
+          break;
+        }
         case 'client.resume': {
           const uiId = env.payload.sessionId;
           const existing = this.manager.get(uiId);
@@ -158,7 +270,7 @@ export class WsHub {
         }
       }
     } catch (e) {
-      this.sendError(ws, (e as Error).message, env.requestId);
+      this.sendError(ws, (e as Error).message, (env as { requestId?: string }).requestId);
     }
   }
 
