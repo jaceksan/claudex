@@ -157,6 +157,30 @@ export class SessionManager extends EventEmitter {
     }
   }
 
+  restart(id: string): SessionHandle | undefined {
+    const h = this.sessions.get(id);
+    if (!h) return undefined;
+    const { cwd, title, effort } = h.state;
+    // Drop the handle from the map before killing so the old subprocess's exit listener
+    // doesn't broadcast a stale 'crashed' update for this id. Then spawn a fresh subprocess
+    // under the same UI id with NO `--resume` flag — new claudeSessionId, empty context.
+    this.sessions.delete(id);
+    try { h.kill(); } catch { /* ignore */ }
+    const next = this.create({
+      cwd,
+      presetUiId: id,
+      effort,
+      label: title ?? undefined,
+    });
+    // Same trick as resume(): a fresh `claude --input-format stream-json` subprocess emits no
+    // system:init until the first stdin message arrives, so leaving status='starting' freezes
+    // the UI on "starting Claude…". Mark it idle so the composer is enabled and the user
+    // (or a broadcast) can wake it up.
+    next.state = { ...next.state, status: 'idle' };
+    this.emit('updated', next);
+    return next;
+  }
+
   delete(id: string): void {
     const h = this.sessions.get(id);
     if (!h) return;

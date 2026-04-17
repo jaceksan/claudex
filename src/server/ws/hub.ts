@@ -94,6 +94,20 @@ export class WsHub {
         case 'client.kill':
           this.manager.kill(env.payload.sessionId);
           break;
+        case 'client.restart': {
+          const h = this.manager.restart(env.payload.sessionId);
+          if (!h) return this.sendError(ws, 'no such session', env.requestId);
+          this.db.setUsage(h.id, 0, 0, 0, 0);
+          // Null the stale claude_session_id in the DB so a server restart before the first
+          // event of the new subprocess doesn't rehydrate with a pointer to the old convo.
+          this.db.clearClaudeSessionId(h.id);
+          // Push a replay to all subscribers of this session so their event lists reset.
+          this.sendToSubscribers(h.id, {
+            type: 'session.replay',
+            payload: { state: h.state, events: [...h.eventLog] },
+          });
+          break;
+        }
         case 'client.interrupt':
           this.manager.interrupt(env.payload.sessionId);
           break;

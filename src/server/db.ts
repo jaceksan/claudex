@@ -60,6 +60,10 @@ export class Db {
       .run(cumCost, cumIn, cumOut, turns, id);
   }
 
+  clearClaudeSessionId(id: string): void {
+    this.db.prepare('UPDATE sessions SET claude_session_id=NULL WHERE id=?').run(id);
+  }
+
   upsertSession(row: { id: string; claudeSessionId?: string | null; cwd: string; label: string | null; status: string; effort?: string | null; error?: string | null }): void {
     const now = Date.now();
     this.db.prepare(`

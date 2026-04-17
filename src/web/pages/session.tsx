@@ -250,30 +250,30 @@ export default function SessionPage({ id }: { id: string }) {
                   Stop
                 </button>
               )}
-              {state.status === 'idle' && (
+              {(state.status === 'idle' || state.status === 'running' || state.status === 'starting' || state.status === 'waiting-permission') && (
                 <button
                   onClick={() => {
-                    if (confirm('Clear chat history and free context? This sends /clear to Claude.')) {
-                      send({ type: 'client.sendInput', payload: { sessionId: id, text: '/clear' } });
+                    if (confirm('Restart session? This ends the current chat and starts a fresh one in the same directory. Cost/tokens/turns reset to 0.')) {
+                      send({ type: 'client.restart', payload: { sessionId: id } });
                     }
                   }}
                   className="rounded bg-zinc-700/70 px-3 py-1 text-sm text-zinc-200 hover:bg-blue-600 hover:text-white"
-                  title="Clear conversation history and free context"
+                  title="Start a fresh chat in the same card (new claudeSessionId, empty context)"
                 >
-                  Clear
+                  Restart
                 </button>
               )}
               {(state.status === 'idle' || state.status === 'running' || state.status === 'starting' || state.status === 'waiting-permission') && (
                 <button
                   onClick={() => {
-                    if (confirm('Kill the Claude subprocess? The session will end; use Delete to remove it.')) {
+                    if (confirm('Pause the Claude subprocess? The conversation is preserved — use Resume later to continue.')) {
                       send({ type: 'client.kill', payload: { sessionId: id } });
                     }
                   }}
                   className="rounded bg-zinc-700/70 px-3 py-1 text-sm text-zinc-200 hover:bg-red-600 hover:text-white"
-                  title="End the Claude subprocess"
+                  title="Stop the subprocess but keep the conversation (resumable)"
                 >
-                  Kill
+                  Pause
                 </button>
               )}
               <button
