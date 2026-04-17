@@ -1,0 +1,29 @@
+src/server/index.ts
+  7a240c56656ec247 13,32
+src/server/migration.ts
+  7a240c56656ec247 1-47
+src/server/db.ts
+  7a240c56656ec247 99-100
+tests/migration.test.ts
+  7a240c56656ec247 1-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "308c20961c5c979c634a1647a45b925d1c8fe722",
+  "prompts": {
+    "7a240c56656ec247": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28cd815a-90e4-4f16-b2c1-5aacb321a562",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 84,
+      "total_deletions": 0,
+      "accepted_lines": 86,
+      "overriden_lines": 0
+    }
+  }
+}
