@@ -23,4 +23,11 @@ describe('ensureSchema', () => {
     const repo = db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name='repo'").get() as { n: number };
     expect(repo.n).toBe(1);
   });
+
+  it('enables foreign keys', () => {
+    const db = new Database(':memory:');
+    ensureSchema(db);
+    const row = db.prepare('PRAGMA foreign_keys').get() as { foreign_keys: number };
+    expect(row.foreign_keys).toBe(1);
+  });
 });

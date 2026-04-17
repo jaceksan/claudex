@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 
 export function ensureSchema(db: Database.Database): void {
   db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
   db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
