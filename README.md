@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/logo.png" alt="Claudex" width="420" />
+</p>
+
 # Claudex — a control room for Claude Code
 
 Claudex turns your terminal-bound `claude` CLI into a multi-session web cockpit. Spin up dozens of Claude Code agents across different repos, watch them work in parallel, jump into any one to read its rendered markdown, diffs and plans, and get an OS notification the moment a session finishes or wants your attention. When something goes wrong it survives a restart — every session is detachable and resumable.
