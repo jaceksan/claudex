@@ -68,4 +68,95 @@ describe('TopicManager.create', () => {
       firstTask: { effort: 'medium', permissionMode: 'acceptEdits' },
     })).rejects.toThrow(/not found/);
   });
+
+  it('addAttempt creates a second attempt-2 child branch', async () => {
+    const repo = repos.register({
+      path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin',
+      defaultBranch: 'main',
+    });
+    const { topic } = await mgr.create({
+      repoId: repo.id, template: 'standard',
+      title: 'My feature', ticketKey: 'XY-1',
+      firstTask: { effort: 'medium', permissionMode: 'acceptEdits' },
+    });
+    const task2 = await mgr.addAttempt(topic.id, { effort: 'medium', permissionMode: 'acceptEdits' });
+    expect(task2.type).toBe('attempt');
+    expect(task2.childBranch).toMatch(/__attempt-2$/);
+    expect(task2.worktreePath).toBeTruthy();
+  });
+
+  it('acceptAttempt squash-merges, marks accepted, discards siblings', async () => {
+    const repo = repos.register({
+      path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin',
+      defaultBranch: 'main',
+    });
+    const { topic, task: task1 } = await mgr.create({
+      repoId: repo.id, template: 'standard',
+      title: 'My feature', ticketKey: 'XY-1',
+      firstTask: { effort: 'medium', permissionMode: 'acceptEdits' },
+    });
+    const task2 = await mgr.addAttempt(topic.id, { effort: 'medium', permissionMode: 'acceptEdits' });
+
+    gitCalls.length = 0; // reset to capture only acceptAttempt calls
+    await mgr.acceptAttempt(task1.sessionId);
+
+    const gitArgSets = gitCalls.map((c) => c.args);
+    expect(gitArgSets).toContainEqual(['checkout', topic.topicBranch]);
+    expect(gitArgSets).toContainEqual(['merge', '--squash', task1.childBranch]);
+    expect(gitArgSets).toContainEqual(['commit', '-m', 'XY-1: My feature']);
+
+    const updatedTopic = topics.getById(topic.id)!;
+    expect(updatedTopic.acceptedAttemptId).toBe(task1.sessionId);
+
+    const t1After = tasks.getBySession(task1.sessionId)!;
+    expect(t1After.acceptedAt).not.toBeNull();
+
+    const t2After = tasks.getBySession(task2.sessionId)!;
+    expect(t2After.discardedAt).not.toBeNull();
+  });
+
+  it('discardAttempt marks attempt discarded', async () => {
+    const repo = repos.register({
+      path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin',
+      defaultBranch: 'main',
+    });
+    const { task } = await mgr.create({
+      repoId: repo.id, template: 'standard',
+      title: 'My feature',
+      firstTask: { effort: 'medium', permissionMode: 'acceptEdits' },
+    });
+    await mgr.discardAttempt(task.sessionId);
+    const after = tasks.getBySession(task.sessionId)!;
+    expect(after.discardedAt).not.toBeNull();
+  });
+
+  it('addAttempt throws after accept', async () => {
+    const repo = repos.register({
+      path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin',
+      defaultBranch: 'main',
+    });
+    const { topic, task } = await mgr.create({
+      repoId: repo.id, template: 'standard',
+      title: 'My feature',
+      firstTask: { effort: 'medium', permissionMode: 'acceptEdits' },
+    });
+    await mgr.acceptAttempt(task.sessionId);
+    await expect(mgr.addAttempt(topic.id, { effort: 'medium', permissionMode: 'acceptEdits' }))
+      .rejects.toThrow(/cannot add attempt after accept/);
+  });
+
+  it('acceptAttempt throws on non-attempt task', async () => {
+    const repo = repos.register({
+      path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin',
+      defaultBranch: 'main',
+    });
+    const { topic } = await mgr.create({
+      repoId: repo.id, template: 'exploration',
+      title: 'Explore stuff',
+      firstTask: { effort: 'medium', permissionMode: 'plan' },
+    });
+    const freeTasks = tasks.listByTopic(topic.id);
+    expect(freeTasks[0].type).toBe('free');
+    await expect(mgr.acceptAttempt(freeTasks[0].sessionId)).rejects.toThrow(/not an attempt task/);
+  });
 });

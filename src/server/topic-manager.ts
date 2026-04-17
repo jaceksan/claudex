@@ -87,4 +87,49 @@ export class TopicManager {
     });
     return { topic, task };
   }
+
+  async addAttempt(topicId: string, args: { prompt?: string; effort: string; permissionMode: string; label?: string }) {
+    const topic = this.d.topics.getById(topicId);
+    if (!topic) throw new Error(`topic ${topicId} not found`);
+    if (topic.phase !== 'Draft') throw new Error(`cannot add attempt: phase ${topic.phase}`);
+    if (topic.acceptedAttemptId) throw new Error('cannot add attempt after accept — use fix task');
+    const repo = this.d.repos.getById(topic.repoId)!;
+    const existing = this.d.tasks.listByTopic(topicId).filter((t) => t.type === 'attempt');
+    const n = String(existing.length + 1);
+    const attemptBranch = topic.topicBranch! + renderBranchTemplate(repo.attemptSuffix, { n });
+    const session = await this.d.spawnSession({
+      cwd: repo.path, label: args.label ?? `attempt-${n}`,
+      prompt: args.prompt, effort: args.effort, permissionMode: args.permissionMode,
+    });
+    const wt = this.d.createWorktree(repo.path, session.id, { branch: attemptBranch, base: topic.topicBranch! });
+    this.d.db.prepare('UPDATE sessions SET cwd=? WHERE id=?').run(wt.path, session.id);
+    return this.d.tasks.create({
+      sessionId: session.id, topicId, type: 'attempt',
+      label: args.label ?? `attempt-${n}`,
+      childBranch: attemptBranch, worktreePath: wt.path,
+    });
+  }
+
+  async acceptAttempt(sessionId: string) {
+    const task = this.d.tasks.getBySession(sessionId);
+    if (!task) throw new Error(`task ${sessionId} not found`);
+    if (task.type !== 'attempt') throw new Error('not an attempt task');
+    const topic = this.d.topics.getById(task.topicId)!;
+    const repo = this.d.repos.getById(topic.repoId)!;
+    await this.d.git(['checkout', topic.topicBranch!], repo.path);
+    await this.d.git(['merge', '--squash', task.childBranch!], repo.path);
+    const msg = `${topic.ticketKey ? topic.ticketKey + ': ' : ''}${topic.title}`;
+    await this.d.git(['commit', '-m', msg], repo.path);
+    this.d.tasks.markAccepted(sessionId);
+    this.d.topics.setPhase(topic.id, 'Draft', { acceptedAttemptId: sessionId });
+    for (const t of this.d.tasks.listByTopic(topic.id)) {
+      if (t.type === 'attempt' && t.sessionId !== sessionId && !t.acceptedAt && !t.discardedAt) {
+        this.d.tasks.markDiscarded(t.sessionId);
+      }
+    }
+  }
+
+  async discardAttempt(sessionId: string) {
+    this.d.tasks.markDiscarded(sessionId);
+  }
 }
