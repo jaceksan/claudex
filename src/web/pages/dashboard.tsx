@@ -12,7 +12,7 @@ export default function DashboardPage() {
           + New topic
         </button>
       </div>
-      <TopicGrid topics={topics} onOpenTopic={(id) => { /* Plan 3: topic detail page */ console.log('open topic', id); }} />
+      <TopicGrid topics={topics} onOpenTopic={() => { /* Plan 3: topic detail page */ }} />
     </div>
   );
 }
