@@ -1,0 +1,23 @@
+src/web/pages/session.tsx
+  caa43a1f387d45ae 125-137,165-253,301-327
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "202b51fd40fa9c216deaae1f9449c4126f278cb1",
+  "prompts": {
+    "caa43a1f387d45ae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5d704b29-17b7-43cd-9666-ece65ed35b33",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 130,
+      "total_deletions": 94,
+      "accepted_lines": 129,
+      "overriden_lines": 0
+    }
+  }
+}
