@@ -1,0 +1,38 @@
+src/web/components/broadcast-modal.tsx
+  fc742e1a06a3e927 1-67
+src/web/pages/dashboard.tsx
+  fc742e1a06a3e927 7,22-29,31-60,65-74,76-91,93-94,96,98-118,120,122-126,132-149,155-192,200-208,212-217
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "5cf866120ef166b09374e9317117c35e708d1409",
+  "prompts": {
+    "a6ed9d6363a6c71d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8e995871-192b-4832-98f2-4d6e6e724139",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "fc742e1a06a3e927": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aab6a28d-f715-43a2-9170-8c1742cee733",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 282,
+      "overriden_lines": 0
+    }
+  }
+}
