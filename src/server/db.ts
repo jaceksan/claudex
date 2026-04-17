@@ -96,6 +96,8 @@ export class Db {
     this.db.prepare('DELETE FROM sessions WHERE id=?').run(id);
   }
 
+  underlying(): Database.Database { return this.db; }
+
   close(): void {
     this.db.close();
   }

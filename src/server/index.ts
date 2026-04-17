@@ -10,6 +10,7 @@ import { WsHub } from './ws/hub.js';
 import { TranscriptReader } from './session/transcript.js';
 import { getGitInfo } from './git.js';
 import { getCommands } from './commands.js';
+import { runMigrations } from './migration.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 7878);
@@ -28,6 +29,7 @@ await app.register(fastifyWebsocket);
 
 const dbPath = process.env.CLAUDEX_DB ?? path.join(process.env.HOME ?? '.', '.claudex.sqlite');
 const db = new Db(dbPath);
+runMigrations(db.underlying());
 db.markAllDetached();
 
 const manager = new SessionManager();
