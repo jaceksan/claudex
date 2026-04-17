@@ -123,18 +123,99 @@ export default function SessionPage({ id }: { id: string }) {
     send({ type: 'client.rename', payload: { sessionId: id, title: next.trim() || null } });
   };
 
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const detailsRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!detailsOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (detailsRef.current && !detailsRef.current.contains(e.target as Node)) setDetailsOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setDetailsOpen(false); };
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
-  }, [detailsOpen]);
+  const headerInfo = state ? (
+    <div className="flex flex-col gap-1 min-w-0">
+      {/* Row 1 — identity: title + status */}
+      <div className="flex items-center gap-2 min-w-0">
+        <span className={`inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset ${statusColors[state.status]}`}>
+          {isBusy(state.status) && (
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
+          )}
+          {state.status}
+        </span>
+        {state.title ? (
+          <button
+            onClick={rename}
+            className="truncate max-w-md text-sm font-semibold text-zinc-100 hover:text-blue-300"
+            title="Click to rename"
+          >
+            {state.title}
+          </button>
+        ) : (
+          <button
+            onClick={rename}
+            className="text-xs text-zinc-500 hover:text-blue-300"
+            title="Click to set a title"
+          >
+            + title
+          </button>
+        )}
+      </div>
+      {/* Row 2 — location: cwd + worktree branch */}
+      <div className="flex flex-wrap items-center gap-2 min-w-0 text-xs">
+        <span className="font-mono text-zinc-400 truncate max-w-xl" title={state.cwd}>{state.cwd}</span>
+        {state.worktreeBranch && (
+          <span
+            className="rounded bg-emerald-900/40 px-1.5 py-0.5 font-mono text-[11px] text-emerald-300 ring-1 ring-inset ring-emerald-700/60"
+            title={`worktree off ${state.worktreeOrigin}`}
+          >
+            🌿 {state.worktreeBranch}
+          </span>
+        )}
+        {git?.isRepo && <GitBadge info={git} />}
+      </div>
+      {/* Row 3 — usage stats */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-zinc-500">
+        <span title="Cumulative cost across all resumes of this session">
+          ${(state.baselineCostUsd + state.costUsd).toFixed(4)}
+        </span>
+        <span className="text-zinc-700">·</span>
+        <span title="Cumulative input / output tokens across all resumes">
+          {formatTokens(state.baselineTokens.input + state.tokens.input)} in / {formatTokens(state.baselineTokens.output + state.tokens.output)} out
+        </span>
+        <span className="text-zinc-700">·</span>
+        <span title="Completed assistant turns (result events) across all resumes">{state.turns} turns</span>
+        <span className="text-zinc-700">·</span>
+        <span title="Tool calls completed in the current subprocess">{state.completedTools} tools</span>
+      </div>
+      {/* Row 4 — config + ids */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-zinc-500">
+        <label className="inline-flex items-center gap-1" title="Claude effort level — changing this sends /effort to the running session">
+          <span>effort:</span>
+          <select
+            value={state.effort ?? 'medium'}
+            onChange={(e) => send({ type: 'client.setEffort', payload: { sessionId: id, effort: e.target.value as EffortLevel } })}
+            disabled={state.status === 'ended' || state.status === 'crashed'}
+            className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-200 outline-none ring-1 ring-zinc-700 focus:ring-blue-500 disabled:opacity-50"
+          >
+            {EFFORTS.map((lvl) => <option key={lvl} value={lvl}>{lvl}</option>)}
+          </select>
+        </label>
+        <span className="text-zinc-700">·</span>
+        <button
+          onClick={() => copy(state.sessionId)}
+          className="font-mono text-zinc-400 hover:text-zinc-100"
+          title={`UI id: ${state.sessionId} (click to copy)`}
+        >
+          ui:{state.sessionId.slice(0, 8)}
+        </button>
+        {claudeId && (
+          <>
+            <span className="text-zinc-700">·</span>
+            <button
+              onClick={() => copy(claudeId)}
+              className="font-mono text-zinc-400 hover:text-zinc-100"
+              title={`Claude session id: ${claudeId} (click to copy — find transcript at ~/.claude/projects/…/${claudeId}.jsonl)`}
+            >
+              claude:{claudeId.slice(0, 8)}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  ) : (
+    <div className="text-xs text-zinc-500">Waiting for session {id.slice(0, 8)}…</div>
+  );
 
   return (
     <div className="flex h-full">
@@ -162,95 +243,19 @@ export default function SessionPage({ id }: { id: string }) {
         </ul>
       </aside>
       <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="border-b border-zinc-800 px-6 py-2">
-          {state ? (
-            <>
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <button
-                    onClick={() => navigate('/')}
-                    className="rounded px-2 py-1 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-                    title="Back to dashboard"
-                  >
-                    ← Back
-                  </button>
-                  <span className={`inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset ${statusColors[state.status]}`}>
-                    {isBusy(state.status) && (
-                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
-                    )}
-                    {state.status}
-                  </span>
-                  {state.title ? (
-                    <button
-                      onClick={rename}
-                      className="truncate max-w-md text-sm font-semibold text-zinc-100 hover:text-blue-300"
-                      title="Click to rename"
-                    >
-                      {state.title}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={rename}
-                      className="text-xs text-zinc-500 hover:text-blue-300"
-                      title="Click to set a title"
-                    >
-                      + title
-                    </button>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="relative" ref={detailsRef}>
-                    <button
-                      onClick={() => setDetailsOpen((v) => !v)}
-                      className="rounded px-2 py-1 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-                      title="Session details (effort, ids)"
-                      aria-expanded={detailsOpen}
-                    >
-                      ⋯
-                    </button>
-                    {detailsOpen && (
-                      <div className="absolute right-0 z-10 mt-1 w-72 rounded border border-zinc-700 bg-zinc-900 p-3 shadow-xl">
-                        <div className="space-y-2 text-xs text-zinc-400">
-                          <label className="flex items-center justify-between gap-2" title="Claude effort level — changing this sends /effort to the running session">
-                            <span>effort</span>
-                            <select
-                              value={state.effort ?? 'medium'}
-                              onChange={(e) => send({ type: 'client.setEffort', payload: { sessionId: id, effort: e.target.value as EffortLevel } })}
-                              disabled={state.status === 'ended' || state.status === 'crashed'}
-                              className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-200 outline-none ring-1 ring-zinc-700 focus:ring-blue-500 disabled:opacity-50"
-                            >
-                              {EFFORTS.map((lvl) => <option key={lvl} value={lvl}>{lvl}</option>)}
-                            </select>
-                          </label>
-                          <div className="flex items-center justify-between gap-2">
-                            <span>ui id</span>
-                            <button
-                              onClick={() => copy(state.sessionId)}
-                              className="font-mono text-zinc-300 hover:text-zinc-100"
-                              title={`${state.sessionId} (click to copy)`}
-                            >
-                              {state.sessionId.slice(0, 8)}…
-                            </button>
-                          </div>
-                          <div className="flex items-center justify-between gap-2">
-                            <span>claude id</span>
-                            {claudeId ? (
-                              <button
-                                onClick={() => copy(claudeId)}
-                                className="font-mono text-zinc-300 hover:text-zinc-100"
-                                title={`${claudeId} (click to copy — find transcript at ~/.claude/projects/…/${claudeId}.jsonl)`}
-                              >
-                                {claudeId.slice(0, 8)}…
-                              </button>
-                            ) : (
-                              <span className="text-zinc-600">—</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
+        <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              onClick={() => navigate('/')}
+              className="rounded px-2 py-1 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+              title="Back to dashboard"
+            >
+              ← Back
+            </button>
+            <div className="min-w-0">{headerInfo}</div>
+          </div>
+          {state && (
+            <div className="flex gap-2">
               {(state.status === 'running' || state.status === 'starting' || state.status === 'waiting-permission' || state.currentTool !== null || streaming.length > 0) && (
                 <button
                   onClick={() => send({ type: 'client.interrupt', payload: { sessionId: id } })}
@@ -298,41 +303,7 @@ export default function SessionPage({ id }: { id: string }) {
               >
                 Delete
               </button>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
-                <span className="font-mono truncate max-w-md text-zinc-400" title={state.cwd}>{state.cwd}</span>
-                {state.worktreeBranch && (
-                  <span
-                    className="rounded bg-emerald-900/40 px-1.5 py-0.5 font-mono text-[11px] text-emerald-300 ring-1 ring-inset ring-emerald-700/60"
-                    title={`worktree off ${state.worktreeOrigin}`}
-                  >
-                    🌿 {state.worktreeBranch}
-                  </span>
-                )}
-                <span className="text-zinc-700">·</span>
-                <span title="Cumulative cost across all resumes of this session">
-                  ${(state.baselineCostUsd + state.costUsd).toFixed(4)}
-                </span>
-                <span className="text-zinc-700">·</span>
-                <span title="Cumulative input / output tokens across all resumes">
-                  {formatTokens(state.baselineTokens.input + state.tokens.input)} in / {formatTokens(state.baselineTokens.output + state.tokens.output)} out
-                </span>
-                <span className="text-zinc-700">·</span>
-                <span title="Completed assistant turns (result events) across all resumes">{state.turns} turns</span>
-                <span className="text-zinc-700">·</span>
-                <span title="Tool calls completed in the current subprocess">{state.completedTools} tools</span>
-                {git?.isRepo && (
-                  <>
-                    <span className="text-zinc-700">·</span>
-                    <GitBadge info={git} compact />
-                  </>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="text-xs text-zinc-500">Waiting for session {id.slice(0, 8)}…</div>
+            </div>
           )}
         </div>
         {detached && (
