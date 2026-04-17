@@ -6,6 +6,12 @@ import type { StreamEvent } from '../stream-json/types.js';
 import type { SessionRow } from '../db.js';
 import { createWorktree, removeWorktree, type WorktreeInfo } from '../worktree.js';
 
+function legacyBranchName(uiId: string, label: string | null): string {
+  const short = uiId.slice(0, 8);
+  const slug = (label ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
+  return slug ? `claudex/${slug}-${short}` : `claudex/${short}`;
+}
+
 export interface SessionHandle extends EventEmitter {
   id: string;
   state: SessionState;
@@ -61,7 +67,7 @@ export class SessionManager extends EventEmitter {
     // `useWorktree` triggers a fresh `git worktree add`. Failure bubbles up to the WS hub.
     let worktree: WorktreeInfo | null = opts.worktree ?? null;
     if (!worktree && opts.useWorktree) {
-      worktree = createWorktree(opts.cwd, localId, opts.label ?? null);
+      worktree = createWorktree(opts.cwd, localId, { branch: legacyBranchName(localId, opts.label ?? null) });
     }
     const effectiveCwd = worktree ? worktree.path : opts.cwd;
 

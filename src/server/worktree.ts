@@ -27,21 +27,25 @@ export function resolveGitRoot(cwd: string): string | null {
   catch { return null; }
 }
 
-export function createWorktree(sourceCwd: string, uiId: string, label: string | null): WorktreeInfo {
+export function createWorktree(
+  sourceCwd: string,
+  uiId: string,
+  opts: { branch: string; base?: string },
+): WorktreeInfo {
   const origin = resolveGitRoot(sourceCwd);
   if (!origin) {
     throw new Error(`Worktree requested but ${sourceCwd} is not inside a git repository.`);
   }
-  const short = uiId.slice(0, 8);
-  // Slug the label for a readable branch suffix, but keep it short.
-  const slug = (label ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
-  const branch = slug ? `claudex/${slug}-${short}` : `claudex/${short}`;
+  const { branch, base } = opts;
   const wtPath = path.join(worktreeRoot(), uiId);
   if (existsSync(wtPath)) {
     // Cleanup a stale path left over from a crashed prior session under the same id.
     try { rmSync(wtPath, { recursive: true, force: true }); } catch { /* ignore */ }
   }
-  run('git', ['worktree', 'add', '-b', branch, wtPath], origin);
+  const addArgs = base
+    ? ['worktree', 'add', '-b', branch, wtPath, base]
+    : ['worktree', 'add', '-b', branch, wtPath];
+  run('git', addArgs, origin);
   return { path: wtPath, origin, branch };
 }
 
