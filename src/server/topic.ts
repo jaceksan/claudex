@@ -51,13 +51,15 @@ export class TopicStore {
     if (extra.prNumber !== undefined) { parts.push('pr_number=?'); args.push(extra.prNumber); }
     if (extra.acceptedAttemptId !== undefined) { parts.push('accepted_attempt_id=?'); args.push(extra.acceptedAttemptId); }
     if (extra.topicBranch !== undefined) { parts.push('topic_branch=?'); args.push(extra.topicBranch); }
-    if (phase === 'Merged') { parts.push('merged_at=?'); args.push(now); }
-    if (phase === 'Closed') { parts.push('closed_at=?'); args.push(now); }
+    if (phase === 'Merged') { parts.push('merged_at=COALESCE(merged_at, ?)'); args.push(now); }
+    if (phase === 'Closed') { parts.push('closed_at=COALESCE(closed_at, ?)'); args.push(now); }
     args.push(id);
-    this.db.prepare(`UPDATE topic SET ${parts.join(', ')} WHERE id=?`).run(...args);
+    const info = this.db.prepare(`UPDATE topic SET ${parts.join(', ')} WHERE id=?`).run(...args);
+    if (info.changes === 0) throw new Error(`topic ${id} not found`);
   }
   setBlockedOnHuman(id: string, blocked: boolean): void {
-    this.db.prepare('UPDATE topic SET blocked_on_human=? WHERE id=?').run(blocked ? 1 : 0, id);
+    const info = this.db.prepare('UPDATE topic SET blocked_on_human=? WHERE id=?').run(blocked ? 1 : 0, id);
+    if (info.changes === 0) throw new Error(`topic ${id} not found`);
   }
   private hydrate(r: Record<string, unknown>): Topic {
     return {

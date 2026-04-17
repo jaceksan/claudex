@@ -41,4 +41,39 @@ describe('TopicStore', () => {
     expect(topics.listByRepo(repoId).map((t) => t.id)).toEqual([a.id]);
     expect(topics.listByRepo(repoId, { includeArchived: true }).length).toBe(2);
   });
+
+  it('setPhase persists acceptedAttemptId and topicBranch alongside prNumber', () => {
+    const t = topics.create({ repoId, phase: 'Draft', template: 'standard', title: 'T', slug: 't' });
+    topics.setPhase(t.id, 'Open', { prNumber: 4711, acceptedAttemptId: 'sess_x', topicBranch: 'feat/x' });
+    const t2 = topics.getById(t.id)!;
+    expect(t2.prNumber).toBe(4711);
+    expect(t2.acceptedAttemptId).toBe('sess_x');
+    expect(t2.topicBranch).toBe('feat/x');
+  });
+
+  it('setPhase stamps merged_at only once', async () => {
+    const t = topics.create({ repoId, phase: 'Draft', template: 'standard', title: 'T', slug: 't' });
+    topics.setPhase(t.id, 'Merged');
+    const first = topics.getById(t.id)!.mergedAt;
+    await new Promise((r) => setTimeout(r, 10));
+    topics.setPhase(t.id, 'Merged');
+    const second = topics.getById(t.id)!.mergedAt;
+    expect(second).toBe(first);
+  });
+
+  it('setBlockedOnHuman round-trips', () => {
+    const t = topics.create({ repoId, phase: 'Draft', template: 'standard', title: 'T', slug: 't' });
+    topics.setBlockedOnHuman(t.id, true);
+    expect(topics.getById(t.id)!.blockedOnHuman).toBe(true);
+    topics.setBlockedOnHuman(t.id, false);
+    expect(topics.getById(t.id)!.blockedOnHuman).toBe(false);
+  });
+
+  it('setPhase throws for unknown id', () => {
+    expect(() => topics.setPhase('topic_unknown', 'Open')).toThrow('topic topic_unknown not found');
+  });
+
+  it('setBlockedOnHuman throws for unknown id', () => {
+    expect(() => topics.setBlockedOnHuman('topic_unknown', true)).toThrow('topic topic_unknown not found');
+  });
 });
