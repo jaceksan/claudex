@@ -260,12 +260,19 @@ export class SessionManager extends EventEmitter {
     const prev = this.sessions.get(opts.uiId)?.state;
     const prevTitle = prev?.title ?? null;
     const prevEffort = prev?.effort ?? DEFAULT_EFFORT;
+    const prevWorktreeOrigin = prev?.worktreeOrigin ?? null;
+    const prevWorktreeBranch = prev?.worktreeBranch ?? null;
     this.sessions.delete(opts.uiId);
     const handle = this.create({
       cwd: opts.cwd,
       presetUiId: opts.uiId,
       resumeSessionId: opts.claudeSessionId,
       effort: prevEffort,
+      // Re-attach the existing worktree (already on disk) so the resumed session keeps
+      // its branch + origin and groups under the same source repo on the dashboard.
+      worktree: prevWorktreeOrigin && prevWorktreeBranch
+        ? { origin: prevWorktreeOrigin, branch: prevWorktreeBranch, path: opts.cwd }
+        : undefined,
     });
     if (prevTitle) handle.state = { ...handle.state, title: prevTitle };
     // Seed baselines from the detached handle so cumulative cost/tokens/turns survive the resume.
