@@ -20,4 +20,9 @@ describe('renderBranchTemplate', () => {
   it('renders attempt suffix', () => {
     expect(renderBranchTemplate('__attempt-{n}', { n: '2' })).toBe('__attempt-2');
   });
+  it('collapses double slashes when a middle placeholder is empty', () => {
+    expect(renderBranchTemplate('{type}/{project}/{ticket}-{slug}', {
+      type: 'feature', project: '', ticket: 'CBP-1234', slug: 'payout-retry',
+    })).toBe('feature/CBP-1234-payout-retry');
+  });
 });
