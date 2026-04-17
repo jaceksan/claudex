@@ -36,6 +36,11 @@ export interface SessionState {
   parseErrors: number;
   tokens: { input: number; output: number };
   costUsd: number;
+  // Baselines carried forward across resumes (loaded from SQLite on rehydration).
+  // Display totals = baseline* + subprocess-scope counters above.
+  baselineCostUsd: number;
+  baselineTokens: { input: number; output: number };
+  turns: number; // cumulative turn count across resumes (incremented on `result`)
   lastActivityAt: number;
   planText: string | null;
   error: string | null;
@@ -55,6 +60,9 @@ export function initialState(sessionId: string, cwd: string): SessionState {
     parseErrors: 0,
     tokens: { input: 0, output: 0 },
     costUsd: 0,
+    baselineCostUsd: 0,
+    baselineTokens: { input: 0, output: 0 },
+    turns: 0,
     lastActivityAt: Date.now(),
     planText: null,
     error: null,
@@ -131,6 +139,7 @@ export function reduce(state: SessionState, event: StreamEvent): SessionState {
         ...base,
         status: 'idle',
         costUsd: event.total_cost_usd ?? base.costUsd,
+        turns: base.turns + 1,
       };
     }
 

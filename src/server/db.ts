@@ -11,6 +11,10 @@ export interface SessionRow {
   last_event_at: number;
   error: string | null;
   effort: string | null;
+  cum_cost: number;
+  cum_in: number;
+  cum_out: number;
+  turns: number;
 }
 
 export class Db {
@@ -43,6 +47,17 @@ export class Db {
     if (!cols.includes('effort')) {
       this.db.exec("ALTER TABLE sessions ADD COLUMN effort TEXT NOT NULL DEFAULT 'medium'");
     }
+    for (const col of ['cum_cost', 'cum_in', 'cum_out', 'turns']) {
+      if (!cols.includes(col)) {
+        const type = col === 'cum_cost' ? 'REAL' : 'INTEGER';
+        this.db.exec(`ALTER TABLE sessions ADD COLUMN ${col} ${type} NOT NULL DEFAULT 0`);
+      }
+    }
+  }
+
+  setUsage(id: string, cumCost: number, cumIn: number, cumOut: number, turns: number): void {
+    this.db.prepare('UPDATE sessions SET cum_cost=?, cum_in=?, cum_out=?, turns=? WHERE id=?')
+      .run(cumCost, cumIn, cumOut, turns, id);
   }
 
   upsertSession(row: { id: string; claudeSessionId?: string | null; cwd: string; label: string | null; status: string; effort?: string | null; error?: string | null }): void {

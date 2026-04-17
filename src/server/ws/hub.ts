@@ -19,6 +19,14 @@ export class WsHub {
     manager.on('created', (h) => this.broadcast({ type: 'session.created', payload: { state: h.state } }));
     manager.on('event', (h, ev) => {
       this.db.upsertSession({ id: h.id, claudeSessionId: h.state.claudeSessionId, cwd: h.state.cwd, label: h.state.title, status: h.state.status, effort: h.state.effort });
+      const s = h.state;
+      this.db.setUsage(
+        h.id,
+        s.baselineCostUsd + s.costUsd,
+        s.baselineTokens.input + s.tokens.input,
+        s.baselineTokens.output + s.tokens.output,
+        s.turns,
+      );
       this.sendToSubscribers(h.id, { type: 'session.event', payload: { sessionId: h.id, event: ev } });
       this.broadcast({ type: 'session.updated', payload: { state: h.state } });
       notifications.handle({ sessionId: h.id, title: h.state.title }, ev);

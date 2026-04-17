@@ -37,8 +37,12 @@ export function GitBadge({ info, compact = false }: { info: GitInfo | null; comp
         <span className="text-zinc-500" title={info.upstream}>up to date</span>
       ) : null}
       {dirty && (
-        <span className="text-amber-400">
-          ● {info.dirty?.staged ?? 0}s/{info.dirty?.unstaged ?? 0}u/{info.dirty?.untracked ?? 0}?
+        <span className="text-amber-400" title={`${info.dirty?.staged ?? 0} staged · ${info.dirty?.unstaged ?? 0} unstaged · ${info.dirty?.untracked ?? 0} untracked`}>
+          ● {[
+            info.dirty?.staged ? `${info.dirty.staged} staged` : null,
+            info.dirty?.unstaged ? `${info.dirty.unstaged} unstaged` : null,
+            info.dirty?.untracked ? `${info.dirty.untracked} untracked` : null,
+          ].filter(Boolean).join(' · ')}
         </span>
       )}
       {info.lastCommit && (

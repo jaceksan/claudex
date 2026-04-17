@@ -78,6 +78,9 @@ export class SessionManager extends EventEmitter {
           message: { role: 'user', content: [{ type: 'text', text }] },
         };
         handle.state = reduce(handle.state, ev);
+        if (handle.state.status === 'idle') {
+          handle.state = { ...handle.state, status: 'running' };
+        }
         ring.push(ev);
         if (ring.length > ringSizeForHandle) ring.shift();
         handle.emit('event', ev);
@@ -179,6 +182,9 @@ export class SessionManager extends EventEmitter {
         error: row.error,
         lastActivityAt: row.last_event_at,
         effort: (row.effort as EffortLevel | null) ?? DEFAULT_EFFORT,
+        baselineCostUsd: row.cum_cost ?? 0,
+        baselineTokens: { input: row.cum_in ?? 0, output: row.cum_out ?? 0 },
+        turns: row.turns ?? 0,
       },
       eventLog: [] as StreamEvent[],
       process: null as SessionProcess | null,
@@ -202,6 +208,20 @@ export class SessionManager extends EventEmitter {
       effort: prevEffort,
     });
     if (prevTitle) handle.state = { ...handle.state, title: prevTitle };
+    // Seed baselines from the detached handle so cumulative cost/tokens/turns survive the resume.
+    // The detached state carries DB-loaded baselines plus any subprocess values from the prior run
+    // (which are 0 on a fresh restart but non-zero for an in-memory resume cycle).
+    if (prev) {
+      handle.state = {
+        ...handle.state,
+        baselineCostUsd: prev.baselineCostUsd + prev.costUsd,
+        baselineTokens: {
+          input: prev.baselineTokens.input + prev.tokens.input,
+          output: prev.baselineTokens.output + prev.tokens.output,
+        },
+        turns: prev.turns,
+      };
+    }
     // Replay backlog through reducer before live events arrive
     if (opts.backlog) {
       for (const ev of opts.backlog) {

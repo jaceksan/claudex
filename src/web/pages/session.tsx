@@ -17,6 +17,12 @@ import { statusColors, isBusy } from '../lib/status';
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 type EffortLevel = typeof EFFORTS[number];
 
+function formatTokens(n: number): string {
+  if (n < 1000) return `${n}`;
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
+}
+
 function ThinkingIndicator({ since, label }: { since: number; label: string }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -146,11 +152,17 @@ export default function SessionPage({ id }: { id: string }) {
           {state.status}
         </span>
         <span>·</span>
-        <span>${state.costUsd.toFixed(4)}</span>
+        <span title="Cumulative cost across all resumes of this session">
+          ${(state.baselineCostUsd + state.costUsd).toFixed(4)}
+        </span>
         <span>·</span>
-        <span>{state.tokens.input}/{state.tokens.output} tokens</span>
+        <span title="Cumulative input / output tokens across all resumes">
+          {formatTokens(state.baselineTokens.input + state.tokens.input)} in / {formatTokens(state.baselineTokens.output + state.tokens.output)} out
+        </span>
         <span>·</span>
-        <span>{state.completedTools} tools</span>
+        <span title="Completed assistant turns (result events) across all resumes">{state.turns} turns</span>
+        <span>·</span>
+        <span title="Tool calls completed in the current subprocess">{state.completedTools} tools</span>
         <span>·</span>
         <label className="inline-flex items-center gap-1" title="Claude effort level — changing this sends /effort to the running session">
           <span>effort:</span>
@@ -236,6 +248,19 @@ export default function SessionPage({ id }: { id: string }) {
                   title="Interrupt the current turn (session stays alive)"
                 >
                   Stop
+                </button>
+              )}
+              {state.status === 'idle' && (
+                <button
+                  onClick={() => {
+                    if (confirm('Clear chat history and free context? This sends /clear to Claude.')) {
+                      send({ type: 'client.sendInput', payload: { sessionId: id, text: '/clear' } });
+                    }
+                  }}
+                  className="rounded bg-zinc-700/70 px-3 py-1 text-sm text-zinc-200 hover:bg-blue-600 hover:text-white"
+                  title="Clear conversation history and free context"
+                >
+                  Clear
                 </button>
               )}
               {(state.status === 'idle' || state.status === 'running' || state.status === 'starting' || state.status === 'waiting-permission') && (
