@@ -8,6 +8,8 @@ It's a thin, local wrapper around the official CLI: no API re-implementation, no
 
 - **One pane, many agents.** Live dashboard with status, current tool, cost, token usage, parse errors and git state per session.
 - **Rich session view.** Markdown with syntax highlighting, side-by-side diffs for `Edit`, file previews for `Write`, plan cards for `ExitPlanMode`, collapsible tool calls and results, streaming as it happens.
+- **Broadcast.** Multi-select session cards on the dashboard, type a prompt once, dispatch it to every selected agent in parallel. The thing you can't do in a terminal.
+- **Reset.** Wipe a session's context and start a fresh subprocess in place — same card, same cwd, blank slate — without losing the dashboard slot.
 - **Slash-command autocomplete.** Type `/` to search every built-in command, user command, user skill and plugin skill on your machine. Two-tier ranking (prefix → substring), keyboard-driven, scrollable — no truncation.
 - **OS notifications.** Click-through to the session that fired them. Sessions can finish in the background while you work elsewhere.
 - **Detach + resume.** Server restarts, browser refreshes, machine reboots — sessions persist in SQLite and reattach to their existing transcripts via `claude --resume`.

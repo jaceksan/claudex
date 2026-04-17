@@ -51,10 +51,10 @@ sqlite3 ~/.claudex.sqlite \
 
 Never mix them. In particular, `claude --resume <UI UUID>` hits the `"No conversation found"` path and crashes the subprocess, polluting the row.
 
-## 5. Claude CLI `--resume` quirks (stream-json mode)
+## 5. Claude CLI stream-json mode quirks
 
-- `claude --resume <claudeId> --input-format stream-json` emits **nothing** until a user message arrives on stdin — no `system:init`, no output. Resumed sessions are marked `idle` by the manager so the composer is enabled; the user has to type for Claude to wake up.
-- Pre-flight before spawning: `TranscriptReader.findTranscript(claudeSessionId)` must return a path. If not, return an error envelope — don't let Claude crash the subprocess, because its failed result will get persisted.
+- **Silent until stdin.** *Any* `claude --input-format stream-json` subprocess — fresh or `--resume` — emits **nothing** until a user message arrives on stdin. No `system:init`, no output. The original `create()` flow always sends an initial prompt, so the `starting → idle` transition looks automatic; it isn't. `resume()` and `restart()` (Reset) both work around this by forcing `state.status='idle'` after spawn so the composer is enabled and the user can wake the subprocess by typing. **If you add another spawn path that doesn't send an initial stdin message, do the same** or the UI freezes on "starting Claude…" forever.
+- Pre-flight before spawning with `--resume`: `TranscriptReader.findTranscript(claudeSessionId)` must return a path. If not, return an error envelope — don't let Claude crash the subprocess, because its failed result will get persisted.
 - Sessions that were killed mid-turn sometimes show up with the transcript file present but Claude still says `"No conversation found"`. In practice they're often still resumable if you provide a prompt; if not, the session is dead and must be deleted.
 
 ## 6. Verification commands before claiming done
