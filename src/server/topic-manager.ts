@@ -9,6 +9,10 @@ export interface SpawnedSession { id: string; }
 export type Git = (args: string[], cwd?: string) => Promise<string>;
 export type CreateWt = (cwd: string, uiId: string, opts: { branch: string; base?: string }) => { path: string; origin: string; branch: string };
 
+export interface OnFixAccepted {
+  onFixAccepted(topic: import('./topic.js').Topic, task: import('./task.js').Task, commitSha: string): Promise<void>;
+}
+
 export interface TopicManagerDeps {
   db: Database.Database;
   repos: RepoStore;
@@ -19,6 +23,7 @@ export interface TopicManagerDeps {
   spawnSession: (args: { cwd: string; label: string; prompt?: string; effort: string; permissionMode: string }) => Promise<SpawnedSession>;
   now: () => number;
   githubLogin: () => Promise<string>;
+  prLifecycle?: OnFixAccepted;
 }
 
 export interface CreateTopicInput {
@@ -173,5 +178,44 @@ export class TopicManager {
       childBranch, worktreePath: wt.path,
       parentTrigger: args.parentTrigger,
     });
+  }
+
+  async acceptFixTask(sessionId: string) {
+    const task = this.d.tasks.getBySession(sessionId);
+    if (!task) throw new Error(`task ${sessionId} not found`);
+    if (task.type !== 'fix-comments' && task.type !== 'fix-ci') {
+      throw new Error('not a fix task');
+    }
+    if (task.acceptedAt) throw new Error('task already accepted');
+    if (task.discardedAt) throw new Error('task already discarded');
+
+    const topic = this.d.topics.getById(task.topicId)!;
+    const repo = this.d.repos.getById(topic.repoId)!;
+
+    await this.d.git(['checkout', topic.topicBranch!], repo.path);
+    await this.d.git(['merge', '--squash', task.childBranch!], repo.path);
+
+    const subject = task.label ? `fix(pr): ${task.label}` : 'fix(pr): apply review fixes';
+    const msg = repo.commitTemplate.replace('{subject}', subject);
+    await this.d.git(['commit', '-m', msg], repo.path);
+
+    const commitSha = (await this.d.git(['rev-parse', 'HEAD'], repo.path)).trim();
+
+    await this.d.git(['push', repo.forkRemote, topic.topicBranch!], repo.path);
+
+    if (this.d.prLifecycle) {
+      await this.d.prLifecycle.onFixAccepted(topic, task, commitSha);
+    }
+
+    this.d.tasks.markAccepted(sessionId);
+  }
+
+  async discardFixTask(sessionId: string) {
+    const task = this.d.tasks.getBySession(sessionId);
+    if (!task) throw new Error(`task ${sessionId} not found`);
+    if (task.type !== 'fix-comments' && task.type !== 'fix-ci') {
+      throw new Error('not a fix task');
+    }
+    this.d.tasks.markDiscarded(sessionId);
   }
 }

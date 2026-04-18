@@ -5,6 +5,7 @@ import { RepoStore } from '../src/server/repo.js';
 import { TopicStore } from '../src/server/topic.js';
 import { PrLifecycle } from '../src/server/pr-lifecycle.js';
 import type { VcsAdapter, PR, ReviewThread, Check } from '../src/server/vcs/adapter.js';
+import type { Task } from '../src/server/task.js';
 import type { PrBundle } from '../src/server/pr-cache.js';
 
 function makeFakePR(number: number): PR {
@@ -392,5 +393,130 @@ describe('PrLifecycle fix methods', () => {
       const call = addFixTask.mock.calls[0];
       expect(call[1].prompt).toContain('flaky-test');
     });
+  });
+});
+
+describe('PrLifecycle.onFixAccepted', () => {
+  let db: Database.Database;
+  let repos: RepoStore;
+  let topics: TopicStore;
+  let mockInvalidate: ReturnType<typeof vi.fn>;
+  let mockReplyOnThread: ReturnType<typeof vi.fn>;
+  let mockResolveThread: ReturnType<typeof vi.fn>;
+  let lifecycle: PrLifecycle;
+
+  beforeEach(() => {
+    db = new Database(':memory:');
+    ensureSchema(db);
+    repos = new RepoStore(db);
+    topics = new TopicStore(db);
+
+    mockInvalidate = vi.fn();
+    mockReplyOnThread = vi.fn().mockResolvedValue(undefined);
+    mockResolveThread = vi.fn().mockResolvedValue(undefined);
+
+    const fakeAdapter: Partial<VcsAdapter> = {
+      kind: 'github',
+      replyOnThread: mockReplyOnThread,
+      resolveThread: mockResolveThread,
+    };
+
+    lifecycle = new PrLifecycle({
+      repos,
+      topics,
+      adapter: (_repoId) => fakeAdapter as VcsAdapter,
+      prCache: { get: vi.fn(), invalidate: mockInvalidate } as unknown as import('../src/server/pr-cache.js').PrCache,
+      git: async () => '',
+      topicManager: { addFixTask: vi.fn() },
+    });
+  });
+
+  function makeOpenTopic(repoId: string, prNumber = 42) {
+    const topic = topics.create({
+      repoId,
+      phase: 'Draft',
+      template: 'standard',
+      title: 'My feature',
+      slug: 'my-feature',
+      topicBranch: 'jaceksan/T-1_my-feature',
+    });
+    topics.setPhase(topic.id, 'Open', { prNumber });
+    return topics.getById(topic.id)!;
+  }
+
+  function makeFixTask(opts: { threadIds?: string[] } = {}): Task {
+    return {
+      sessionId: 'sess_fix_1',
+      topicId: 'topic_abc',
+      type: 'fix-comments',
+      label: 'review-fix',
+      parentTrigger: opts.threadIds ? { threadIds: opts.threadIds } : null,
+      childBranch: 'jaceksan/T-1_my-feature__fix-abc123',
+      worktreePath: '/tmp/wt/sess_fix_1',
+      acceptedAt: null,
+      discardedAt: null,
+      triageResult: null,
+      createdAt: Date.now(),
+    };
+  }
+
+  it('invalidates pr cache and calls replyOnThread + resolveThread for each threadId', async () => {
+    const repo = repos.register({
+      path: '/tmp/repo', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'fork', defaultBranch: 'main',
+    });
+    const topic = makeOpenTopic(repo.id, 42);
+    const task = makeFixTask({ threadIds: ['thread-1', 'thread-2'] });
+
+    await lifecycle.onFixAccepted(topic, task, 'deadbeef');
+
+    expect(mockInvalidate).toHaveBeenCalledWith('/tmp/repo', 42);
+    expect(mockReplyOnThread).toHaveBeenCalledTimes(2);
+    expect(mockReplyOnThread).toHaveBeenCalledWith('/tmp/repo', 'thread-1', 'Fixed in deadbeef');
+    expect(mockReplyOnThread).toHaveBeenCalledWith('/tmp/repo', 'thread-2', 'Fixed in deadbeef');
+    expect(mockResolveThread).toHaveBeenCalledTimes(2);
+    expect(mockResolveThread).toHaveBeenCalledWith('/tmp/repo', 'thread-1');
+    expect(mockResolveThread).toHaveBeenCalledWith('/tmp/repo', 'thread-2');
+  });
+
+  it('does not call reply/resolve when parentTrigger has no threadIds', async () => {
+    const repo = repos.register({
+      path: '/tmp/repo', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'fork', defaultBranch: 'main',
+    });
+    const topic = makeOpenTopic(repo.id, 42);
+    const task = makeFixTask(); // no threadIds
+
+    await lifecycle.onFixAccepted(topic, task, 'deadbeef');
+
+    expect(mockInvalidate).toHaveBeenCalledWith('/tmp/repo', 42);
+    expect(mockReplyOnThread).not.toHaveBeenCalled();
+    expect(mockResolveThread).not.toHaveBeenCalled();
+  });
+
+  it('swallows errors from replyOnThread and still calls resolveThread', async () => {
+    const repo = repos.register({
+      path: '/tmp/repo', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'fork', defaultBranch: 'main',
+    });
+    const topic = makeOpenTopic(repo.id, 42);
+    const task = makeFixTask({ threadIds: ['thread-1'] });
+    mockReplyOnThread.mockRejectedValueOnce(new Error('network error'));
+
+    // Should not throw
+    await expect(lifecycle.onFixAccepted(topic, task, 'deadbeef')).resolves.toBeUndefined();
+    expect(mockResolveThread).toHaveBeenCalledWith('/tmp/repo', 'thread-1');
+  });
+
+  it('does not call invalidate when topic has no prNumber', async () => {
+    const repo = repos.register({
+      path: '/tmp/repo', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'fork', defaultBranch: 'main',
+    });
+    const topic = topics.create({
+      repoId: repo.id, phase: 'Draft', template: 'standard',
+      title: 'No PR', slug: 'no-pr', topicBranch: 'jaceksan/no-pr',
+    });
+    const task = makeFixTask();
+
+    await lifecycle.onFixAccepted(topic, task, 'deadbeef');
+
+    expect(mockInvalidate).not.toHaveBeenCalled();
   });
 });

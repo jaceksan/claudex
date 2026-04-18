@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { ensureSchema } from '../src/server/schema';
 import { RepoStore } from '../src/server/repo';
@@ -318,5 +318,127 @@ describe('TopicManager.addFixTask', () => {
     await expect(mgr.addFixTask(updatedTopic.id, {
       type: 'fix-comments', prompt: 'fix', effort: 'low', permissionMode: 'acceptEdits',
     })).rejects.toThrow(/another task.*is already running/);
+  });
+});
+
+describe('TopicManager.acceptFixTask / discardFixTask', () => {
+  let db: Database.Database; let repos: RepoStore; let topics: TopicStore; let tasks: TaskStore;
+  let gitCalls: Array<{ args: string[]; cwd?: string }>;
+  let gitReturnValue: string;
+  let onFixAccepted: ReturnType<typeof vi.fn>;
+  let mgr: TopicManager;
+  let sessionCounter: number;
+
+  function makeRepo() {
+    return repos.register({
+      path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'fork',
+      defaultBranch: 'main',
+    });
+  }
+
+  beforeEach(() => {
+    db = new Database(':memory:'); ensureSchema(db);
+    repos = new RepoStore(db); topics = new TopicStore(db); tasks = new TaskStore(db);
+    gitCalls = [];
+    gitReturnValue = 'abc1234';
+    onFixAccepted = vi.fn().mockResolvedValue(undefined);
+    sessionCounter = 0;
+    mgr = new TopicManager({
+      db, repos, topics, tasks,
+      git: async (args, cwd) => { gitCalls.push({ args, cwd }); return gitReturnValue; },
+      createWorktree: (_cwd, id, opts) => ({ path: `/tmp/wt/${id}`, origin: '/tmp/r', branch: opts.branch }),
+      spawnSession: async ({ cwd, label }) => {
+        const id = `sess_${++sessionCounter}`;
+        db.prepare("INSERT INTO sessions (id, cwd, label, status, created_at, last_event_at) VALUES (?,?,?,'running',?,?)")
+          .run(id, cwd, label ?? null, Date.now(), Date.now());
+        return { id };
+      },
+      now: () => 1700000000000,
+      githubLogin: async () => 'jaceksan',
+      prLifecycle: { onFixAccepted },
+    });
+  });
+
+  async function createOpenTopicWithFixTask() {
+    const repo = makeRepo();
+    // create Draft topic + attempt
+    const { topic, task: attemptTask } = await mgr.create({
+      repoId: repo.id, template: 'standard',
+      title: 'My feature', ticketKey: 'T-1',
+      firstTask: { prompt: 'start', effort: 'medium', permissionMode: 'acceptEdits' },
+    });
+    db.prepare("UPDATE sessions SET status='idle' WHERE id=?").run(attemptTask.sessionId);
+    await mgr.acceptAttempt(attemptTask.sessionId);
+    db.prepare("UPDATE topic SET phase='Open' WHERE id=?").run(topic.id);
+    const openTopic = topics.getById(topic.id)!;
+
+    // create a fix task
+    const fixTask = await mgr.addFixTask(openTopic.id, {
+      type: 'fix-comments', prompt: 'address review', effort: 'low', permissionMode: 'acceptEdits',
+      label: 'review-fix', parentTrigger: { threadIds: ['thread-1', 'thread-2'] },
+    });
+    return { repo, topic: openTopic, fixTask };
+  }
+
+  it('acceptFixTask: happy path — checkout+merge+commit+push, calls onFixAccepted, marks task accepted', async () => {
+    const { topic, fixTask } = await createOpenTopicWithFixTask();
+    gitCalls.length = 0; // reset to capture only acceptFixTask calls
+
+    await mgr.acceptFixTask(fixTask.sessionId);
+
+    const gitArgSets = gitCalls.map((c) => c.args);
+    expect(gitArgSets).toContainEqual(['checkout', topic.topicBranch]);
+    expect(gitArgSets).toContainEqual(['merge', '--squash', fixTask.childBranch]);
+    expect(gitArgSets.some((a) => a[0] === 'commit')).toBe(true);
+    expect(gitArgSets).toContainEqual(['push', 'fork', topic.topicBranch]);
+    expect(gitArgSets).toContainEqual(['rev-parse', 'HEAD']);
+
+    expect(onFixAccepted).toHaveBeenCalledOnce();
+    const [calledTopic, calledTask, calledSha] = onFixAccepted.mock.calls[0];
+    expect(calledTopic.id).toBe(topic.id);
+    expect(calledTask.sessionId).toBe(fixTask.sessionId);
+    expect(calledSha).toBe('abc1234');
+
+    const updated = tasks.getBySession(fixTask.sessionId)!;
+    expect(updated.acceptedAt).not.toBeNull();
+  });
+
+  it('acceptFixTask: throws when task not found', async () => {
+    await expect(mgr.acceptFixTask('no-such-session')).rejects.toThrow(/not found/);
+  });
+
+  it('acceptFixTask: throws when task already accepted', async () => {
+    const { fixTask } = await createOpenTopicWithFixTask();
+    await mgr.acceptFixTask(fixTask.sessionId);
+    await expect(mgr.acceptFixTask(fixTask.sessionId)).rejects.toThrow(/already accepted/);
+  });
+
+  it('acceptFixTask: throws when task type is attempt', async () => {
+    const repo = makeRepo();
+    const { task } = await mgr.create({
+      repoId: repo.id, template: 'standard',
+      title: 'feat', firstTask: { effort: 'medium', permissionMode: 'acceptEdits' },
+    });
+    await expect(mgr.acceptFixTask(task.sessionId)).rejects.toThrow(/not a fix task/);
+  });
+
+  it('discardFixTask: marks task discarded, no push', async () => {
+    const { fixTask } = await createOpenTopicWithFixTask();
+    gitCalls.length = 0;
+
+    await mgr.discardFixTask(fixTask.sessionId);
+
+    const updated = tasks.getBySession(fixTask.sessionId)!;
+    expect(updated.discardedAt).not.toBeNull();
+    expect(gitCalls.some((c) => c.args[0] === 'push')).toBe(false);
+  });
+
+  it('discardFixTask: throws on non-fix-task', async () => {
+    const repo = makeRepo();
+    const { task } = await mgr.create({
+      repoId: repo.id, template: 'standard',
+      title: 'feat', firstTask: { effort: 'medium', permissionMode: 'acceptEdits' },
+    });
+    await expect(mgr.discardFixTask(task.sessionId)).rejects.toThrow(/not a fix task/);
   });
 });

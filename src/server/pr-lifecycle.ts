@@ -1,5 +1,6 @@
 import type { RepoStore } from './repo.js';
 import type { TopicStore, Topic } from './topic.js';
+import type { Task } from './task.js';
 import type { VcsAdapter } from './vcs/adapter.js';
 import type { PrCache } from './pr-cache.js';
 import { renderActionPrompt } from './skill-invoker.js';
@@ -131,6 +132,30 @@ export class PrLifecycle {
     });
 
     return { sessionId: result.sessionId };
+  }
+
+  async onFixAccepted(topic: Topic, task: Task, commitSha: string): Promise<void> {
+    const repo = this.deps.repos.getById(topic.repoId)!;
+
+    if (topic.prNumber != null) {
+      this.deps.prCache.invalidate(repo.path, topic.prNumber);
+    }
+
+    const trigger = task.parentTrigger as { threadIds?: string[] } | null;
+    const threadIds = trigger?.threadIds ?? [];
+
+    for (const threadId of threadIds) {
+      try {
+        await this.deps.adapter(repo.id).replyOnThread(repo.path, threadId, `Fixed in ${commitSha}`);
+      } catch (e) {
+        console.error(`[pr-lifecycle] replyOnThread(${threadId}) failed:`, e);
+      }
+      try {
+        await this.deps.adapter(repo.id).resolveThread(repo.path, threadId);
+      } catch (e) {
+        console.error(`[pr-lifecycle] resolveThread(${threadId}) failed:`, e);
+      }
+    }
   }
 
   async fixCheck(topicId: string, checkName: string): Promise<{ sessionId: string }> {
