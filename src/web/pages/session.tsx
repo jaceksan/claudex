@@ -13,6 +13,7 @@ import { EventView } from '../components/event-view';
 import { Composer } from '../components/composer';
 import { GitBadge } from '../components/git-badge';
 import { useGitInfo } from '../hooks/use-git-info';
+import { useTaskContext } from '../hooks/use-task-context';
 import { statusColors, isBusy } from '../lib/status';
 
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
@@ -43,6 +44,39 @@ function ThinkingIndicator({ since, label }: { since: number; label: string }) {
       </span>
       <span>{label}…</span>
       <span className="ml-auto font-mono text-[11px] text-blue-400/70">{elapsed}</span>
+    </div>
+  );
+}
+
+function TaskStatus({ ctx, dirty }: {
+  ctx: import('../../server/task-context').TaskContext;
+  dirty: import('../../server/git').GitInfo['dirty'];
+}) {
+  const pending = (dirty?.staged ?? 0) + (dirty?.unstaged ?? 0) + (dirty?.untracked ?? 0);
+  const clean = ctx.aheadTopic === 0 && ctx.aheadCanonical === 0 && ctx.behindCanonical === 0 && pending === 0;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-zinc-400">
+      {clean && <span className="text-emerald-400">✓ clean</span>}
+      {ctx.aheadTopic > 0 && (
+        <span className="text-emerald-300" title={`${ctx.aheadTopic} commit${ctx.aheadTopic === 1 ? '' : 's'} on this task not yet accepted into the topic branch`}>
+          +{ctx.aheadTopic} on task
+        </span>
+      )}
+      {ctx.aheadCanonical > 0 && (
+        <span className="text-blue-300" title={`${ctx.aheadCanonical} commit${ctx.aheadCanonical === 1 ? '' : 's'} ahead of the repo's default branch`}>
+          +{ctx.aheadCanonical} vs main
+        </span>
+      )}
+      {ctx.behindCanonical > 0 && (
+        <span className="text-amber-300" title={`${ctx.behindCanonical} commit${ctx.behindCanonical === 1 ? '' : 's'} on the default branch not yet merged into this task`}>
+          -{ctx.behindCanonical} behind main
+        </span>
+      )}
+      {pending > 0 && (
+        <span className="text-amber-300" title={`${dirty?.staged ?? 0} staged · ${dirty?.unstaged ?? 0} unstaged · ${dirty?.untracked ?? 0} untracked`}>
+          ● {pending} uncommitted
+        </span>
+      )}
     </div>
   );
 }
@@ -125,6 +159,7 @@ export default function SessionPage({ id }: { id: string }) {
   }, [events.length, streaming]);
 
   const git = useGitInfo(state?.sessionId, 10_000);
+  const taskCtx = useTaskContext(state?.sessionId, 10_000);
   const copy = (text: string) => { navigator.clipboard?.writeText(text).catch(() => {}); };
   const claudeId = state?.claudeSessionId;
   const rename = () => {
@@ -136,7 +171,7 @@ export default function SessionPage({ id }: { id: string }) {
 
   const headerInfo = state ? (
     <div className="flex flex-col gap-1 min-w-0">
-      {/* Row 1 — identity: title + status */}
+      {/* Row 1 — identity: status + (for tasks: topic · task, else just title) */}
       <div className="flex items-center gap-2 min-w-0">
         <span className={`inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset ${statusColors[state.status]}`}>
           {isBusy(state.status) && (
@@ -144,7 +179,25 @@ export default function SessionPage({ id }: { id: string }) {
           )}
           {state.status}
         </span>
-        {state.title ? (
+        {taskCtx ? (
+          <div className="flex min-w-0 items-baseline gap-2">
+            <Link
+              href={`/topic/${taskCtx.topic.id}`}
+              className="truncate text-sm font-semibold text-zinc-100 hover:text-blue-300"
+              title="Back to topic"
+            >
+              {taskCtx.topic.title}
+            </Link>
+            <span className="text-zinc-600">·</span>
+            <button
+              onClick={rename}
+              className="truncate text-sm text-zinc-300 hover:text-blue-300"
+              title="Click to rename this task"
+            >
+              {taskCtx.task.label ?? taskCtx.task.type}
+            </button>
+          </div>
+        ) : state.title ? (
           <button
             onClick={rename}
             className="truncate max-w-md text-sm font-semibold text-zinc-100 hover:text-blue-300"
@@ -162,22 +215,27 @@ export default function SessionPage({ id }: { id: string }) {
           </button>
         )}
       </div>
-      {/* Row 2 — location + git status.
-          Branch is owned by GitBadge; don't repeat it here.
-          For worktree sessions, show "worktree · <origin-basename>" (full path on hover)
-          instead of the long ~/.claudex/worktrees/<uuid> path, which is just noise. */}
+      {/* Row 2 — status.
+          For task sessions: ahead of topic · ahead of upstream default · uncommitted.
+          For standalone sessions: location + GitBadge (branch/sha/subject/PR). */}
       <div className="flex flex-wrap items-center gap-2 min-w-0 text-xs">
-        {state.worktreeOrigin ? (
-          <span
-            className="rounded bg-emerald-900/30 px-1.5 py-0.5 text-[11px] text-emerald-300 ring-1 ring-inset ring-emerald-700/50"
-            title={`worktree at ${state.cwd}\noff ${state.worktreeOrigin}`}
-          >
-            🌿 worktree · {state.worktreeOrigin.split('/').pop()}
-          </span>
+        {taskCtx ? (
+          <TaskStatus ctx={taskCtx} dirty={git?.dirty} />
         ) : (
-          <span className="font-mono text-zinc-400 truncate max-w-xl" title={state.cwd}>{state.cwd}</span>
+          <>
+            {state.worktreeOrigin ? (
+              <span
+                className="rounded bg-emerald-900/30 px-1.5 py-0.5 text-[11px] text-emerald-300 ring-1 ring-inset ring-emerald-700/50"
+                title={`worktree at ${state.cwd}\noff ${state.worktreeOrigin}`}
+              >
+                🌿 worktree · {state.worktreeOrigin.split('/').pop()}
+              </span>
+            ) : (
+              <span className="font-mono text-zinc-400 truncate max-w-xl" title={state.cwd}>{state.cwd}</span>
+            )}
+            {git?.isRepo && <GitBadge info={git} />}
+          </>
         )}
-        {git?.isRepo && <GitBadge info={git} />}
       </div>
       {/* Row 3 — usage stats */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-zinc-500">

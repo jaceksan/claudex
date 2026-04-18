@@ -11,6 +11,7 @@ import { Db } from './db.js';
 import { WsHub } from './ws/hub.js';
 import { TranscriptReader } from './session/transcript.js';
 import { getGitInfo } from './git.js';
+import { getTaskContext } from './task-context.js';
 import { getCommands } from './commands.js';
 import { runMigrations } from './migration.js';
 import { TopicManager } from './topic-manager.js';
@@ -117,6 +118,13 @@ app.get<{ Params: { id: string } }>('/api/sessions/:id/git', async (req, reply) 
   if (!h) return reply.code(404).send({ error: 'no such session' });
   const info = await getGitInfo(h.state.cwd);
   return info;
+});
+
+app.get<{ Params: { id: string } }>('/api/sessions/:id/task-context', async (req, reply) => {
+  const h = manager.get(req.params.id);
+  if (!h) return reply.code(404).send({ error: 'no such session' });
+  const ctx = await getTaskContext({ tasks, topics, repos }, req.params.id, h.state.cwd);
+  return ctx;
 });
 
 app.post('/api/repo/register', async (req, reply) => {
