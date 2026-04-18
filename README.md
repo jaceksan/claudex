@@ -55,7 +55,8 @@ Then open http://localhost:5173. Backend runs on `:7878`; Vite proxies `/api` an
 
 ## Roadmap
 
-- **Merge.** Real merge action (gh/glab `mergePR` call) and quick-fix auto-accept + auto-PR wiring — Plan 4.
+- **Quick-fix auto-pilot.** When an attempt on a Quick-fix topic ends cleanly, claudex auto-accepts the attempt and auto-opens the PR — no manual steps.
+- **Merge.** Real merge action (gh/glab `mergePR` call) — Plan 4.
 - **Conflict resolution with AI narrative review.** Sync with main; on conflicts spawn a rebase task that reports a short summary + explicit uncertainties, letting a non-tech user accept/reject without reading diffs.
 - **Flaky CI triage & auto-restart.** Distinguish infrastructure flakes from real failures; rerun flakies rather than "fixing" them.
 - **GitLab support.** `VcsAdapter` is interface-ready; `GitLabAdapter` over `glab` ships after the GitHub path lands.
