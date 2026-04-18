@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { send } from '../lib/ws';
+import { send, getConnectionState } from '../lib/ws';
 
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 const MODES = ['default', 'plan', 'acceptEdits', 'bypassPermissions'] as const;
@@ -9,9 +9,14 @@ export function AddTaskModal({ topicId, onClose }: { topicId: string; onClose: (
   const [effort, setEffort] = useState<typeof EFFORTS[number]>('medium');
   const [mode, setMode] = useState<typeof MODES[number]>('acceptEdits');
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function submit() {
     if (submitting) return;
+    if (getConnectionState() !== 'open') {
+      setError('Not connected to the claudex server. Start it and try again.');
+      return;
+    }
     setSubmitting(true);
     send({
       type: 'client.topic.addAttempt',
@@ -58,6 +63,8 @@ export function AddTaskModal({ topicId, onClose }: { topicId: string; onClose: (
         </div>
 
         <p className="mb-3 text-xs text-zinc-500">Type the first message to the session from inside the task once it opens.</p>
+
+        {error && <div className="mb-3 rounded bg-red-900/40 p-2 text-xs text-red-200">{error}</div>}
 
         <div className="mt-4 flex justify-end gap-2">
           <button onClick={onClose} className="rounded px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800">Cancel</button>
