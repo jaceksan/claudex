@@ -386,15 +386,22 @@ export default function SessionPage({ id }: { id: string }) {
               {state?.claudeSessionId ? (
                 <span className="text-purple-300"> Click Resume to reattach and continue the conversation.</span>
               ) : (
-                <span className="text-amber-300"> This session has no recorded Claude id (likely predates the migration); it can't be resumed — please Delete it.</span>
+                <span className="text-amber-300"> This session never exchanged a message — click Start fresh to spawn a new subprocess in the same worktree, with a blank conversation.</span>
               )}
             </div>
-            {state?.claudeSessionId && (
+            {state?.claudeSessionId ? (
               <button
                 onClick={resume}
                 className="rounded bg-purple-600 px-3 py-1 text-sm font-medium hover:bg-purple-500"
               >
                 Resume
+              </button>
+            ) : (
+              <button
+                onClick={() => send({ type: 'client.restart', payload: { sessionId: id } })}
+                className="rounded bg-purple-600 px-3 py-1 text-sm font-medium hover:bg-purple-500"
+              >
+                Start fresh
               </button>
             )}
           </div>
