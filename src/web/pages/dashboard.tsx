@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLocation } from 'wouter';
 import { useTopics } from '../hooks/use-topics';
 import { TopicGrid } from '../components/topic-grid';
 import { NewTopicModal } from '../components/new-topic-modal';
@@ -6,6 +7,7 @@ import { NewTopicModal } from '../components/new-topic-modal';
 export default function DashboardPage() {
   const topics = useTopics();
   const [showNew, setShowNew] = useState(false);
+  const [, navigate] = useLocation();
   return (
     <div className="mx-auto max-w-7xl p-6">
       <div className="mb-6 flex items-center justify-between">
@@ -14,7 +16,7 @@ export default function DashboardPage() {
           + New topic
         </button>
       </div>
-      <TopicGrid topics={topics} onOpenTopic={() => { /* Plan 3: topic detail page */ }} />
+      <TopicGrid topics={topics} onOpenTopic={(id) => navigate(`/topic/${id}`)} />
       {showNew && <NewTopicModal onClose={() => setShowNew(false)} />}
     </div>
   );

@@ -12,13 +12,24 @@ export type TopicClientMessage =
   | { type: 'client.topic.accept'; payload: { sessionId: string } }
   | { type: 'client.topic.discard'; payload: { sessionId: string } }
   | { type: 'client.topic.list'; payload: { repoId?: string } }
-  | { type: 'client.repo.list'; payload: Record<string, never> };
+  | { type: 'client.topic.subscribe'; payload: { topicId: string } }
+  | { type: 'client.topic.unsubscribe'; payload: { topicId: string } }
+  | { type: 'client.topic.acceptTask'; payload: { sessionId: string } }
+  | { type: 'client.topic.discardTask'; payload: { sessionId: string } }
+  | { type: 'client.repo.list'; payload: Record<string, never> }
+  | { type: 'client.pr.create'; payload: { topicId: string; title?: string; body?: string } }
+  | { type: 'client.pr.addressFeedback'; payload: { topicId: string; includeCi: boolean; includeComments: boolean } }
+  | { type: 'client.pr.fixComment'; payload: { topicId: string; threadId: string } }
+  | { type: 'client.pr.fixCheck'; payload: { topicId: string; checkName: string } }
+  | { type: 'client.pr.watch'; payload: { topicId: string; enable: boolean } }
+  | { type: 'client.thread.reply'; payload: { topicId: string; threadId: string; body: string } };
 
 export type TopicServerMessage =
   | { type: 'server.topic.state'; payload: { topics: TopicCard[] } }
   | { type: 'server.topic.created'; payload: { topicId: string; sessionId: string } }
   | { type: 'server.topic.error'; payload: { message: string; ctx?: string } }
-  | { type: 'server.repo.state'; payload: { repos: RepoRow[] } };
+  | { type: 'server.repo.state'; payload: { repos: RepoRow[] } }
+  | { type: 'server.topic.detail'; payload: TopicDetailBundle };
 
 export interface TopicCard {
   id: string;
@@ -31,6 +42,33 @@ export interface TopicCard {
   prNumber: number | null;
   taskSummary: { running: number; accepted: number; discarded: number };
   lastEventAt: number;
+}
+
+export interface TaskRow {
+  sessionId: string;
+  topicId: string;
+  type: string;
+  label: string | null;
+  childBranch: string | null;
+  acceptedAt: number | null;
+  discardedAt: number | null;
+  sessionStatus: string;
+}
+
+export interface TopicDetailBundle {
+  topicId: string;
+  topic: TopicCard & {
+    acceptedAttemptId: string | null;
+    watchCi: boolean;
+    slug: string;
+    repoPath: string;
+    repoDefaultBranch: string;
+  };
+  tasks: TaskRow[];
+  pr?: import('../vcs/adapter.js').PR;
+  threads?: import('../vcs/adapter.js').ReviewThread[];
+  checks?: import('../vcs/adapter.js').Check[];
+  required?: string[];
 }
 
 export interface RepoRow {

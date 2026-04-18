@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Route, Link } from 'wouter';
 import DashboardPage from './pages/dashboard';
 import SessionPage from './pages/session';
+import TopicPage from './pages/topic';
 import { useConnection, useSessionList } from './hooks/use-ws';
 import { useNotifications } from './hooks/use-notifications';
 
@@ -62,6 +63,7 @@ export default function App() {
       <main className="flex-1 overflow-hidden">
         <Route path="/" component={DashboardPage} />
         <Route path="/session/:id">{(params) => <SessionPage id={params.id} />}</Route>
+        <Route path="/topic/:id">{(params) => <TopicPage id={params.id} />}</Route>
       </main>
     </div>
   );

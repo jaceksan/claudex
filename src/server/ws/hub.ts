@@ -5,10 +5,12 @@ import type { Db } from '../db.js';
 import type { ClientEnvelope, ServerEnvelope } from './envelope.js';
 import type { TranscriptReader } from '../session/transcript.js';
 import type { TopicManager } from '../topic-manager.js';
+import type { PrLifecycle } from '../pr-lifecycle.js';
+import type { PrCache } from '../pr-cache.js';
 import type { RepoStore } from '../repo.js';
 import type { TopicStore } from '../topic.js';
 import type { TaskStore } from '../task.js';
-import type { TopicCard } from './topic-envelope.js';
+import type { TopicCard, TaskRow, TopicDetailBundle } from './topic-envelope.js';
 import type Database from 'better-sqlite3';
 import { isEffortLevel } from '../session/state.js';
 
@@ -18,6 +20,8 @@ export interface TopicDeps {
   topics: TopicStore;
   tasks: TaskStore;
   rawDb: Database.Database;
+  prLifecycle?: PrLifecycle;
+  prCache?: PrCache;
 }
 
 function topicTaskSummary(tasks: TaskStore, rawDb: Database.Database, topicId: string) {
@@ -54,9 +58,60 @@ function buildTopicState(deps: TopicDeps): ServerEnvelope {
   return { type: 'server.topic.state', payload: { topics: topicCards } };
 }
 
+export async function buildTopicDetail(topicId: string, deps: TopicDeps): Promise<ServerEnvelope> {
+  const topic = deps.topics.getById(topicId);
+  if (!topic) throw new Error(`topic ${topicId} not found`);
+  const repo = deps.repos.getById(topic.repoId)!;
+
+  const taskSummary = topicTaskSummary(deps.tasks, deps.rawDb, topicId);
+  const lastTask = deps.tasks.listByTopic(topicId)[0];
+  const lastEventAt = lastTask
+    ? (deps.rawDb.prepare('SELECT last_event_at FROM sessions WHERE id=?').get(lastTask.sessionId) as { last_event_at?: number } | undefined)?.last_event_at ?? topic.createdAt
+    : topic.createdAt;
+
+  const topicCard: TopicDetailBundle['topic'] = {
+    id: topic.id, repoId: topic.repoId, phase: topic.phase,
+    template: topic.template, ticketKey: topic.ticketKey,
+    title: topic.title, topicBranch: topic.topicBranch,
+    prNumber: topic.prNumber, taskSummary, lastEventAt,
+    acceptedAttemptId: topic.acceptedAttemptId,
+    watchCi: topic.watchCi,
+    slug: topic.slug,
+    repoPath: repo.path,
+    repoDefaultBranch: repo.defaultBranch,
+  };
+
+  const taskRows: TaskRow[] = deps.tasks.listByTopic(topicId).map((t) => {
+    const sessRow = deps.rawDb.prepare('SELECT status FROM sessions WHERE id=?').get(t.sessionId) as { status?: string } | undefined;
+    return {
+      sessionId: t.sessionId, topicId: t.topicId, type: t.type,
+      label: t.label, childBranch: t.childBranch,
+      acceptedAt: t.acceptedAt, discardedAt: t.discardedAt,
+      sessionStatus: sessRow?.status ?? 'ended',
+    };
+  });
+
+  const bundle: TopicDetailBundle = { topicId, topic: topicCard, tasks: taskRows };
+
+  if ((topic.phase === 'Open' || topic.phase === 'Draft') && topic.prNumber && deps.prCache && repo) {
+    try {
+      const prBundle = await deps.prCache.get(repo.path, topic.prNumber, repo.defaultBranch);
+      bundle.pr = prBundle.pr;
+      bundle.threads = prBundle.threads;
+      bundle.checks = prBundle.checks;
+      bundle.required = prBundle.requiredContexts;
+    } catch (e) {
+      console.error('[hub] buildTopicDetail prCache error:', e);
+    }
+  }
+
+  return { type: 'server.topic.detail', payload: bundle };
+}
+
 export class WsHub {
   private readonly clients = new Set<WebSocket>();
   private readonly subs = new Map<WebSocket, Set<string>>(); // ws -> sessionIds
+  private readonly topicSubs = new Map<WebSocket, Set<string>>(); // ws -> topicIds
   private topicDeps: TopicDeps | null = null;
 
   constructor(
@@ -101,8 +156,9 @@ export class WsHub {
   attach(ws: WebSocket): void {
     this.clients.add(ws);
     this.subs.set(ws, new Set());
+    this.topicSubs.set(ws, new Set());
     ws.on('message', (raw) => this.onMessage(ws, raw.toString()));
-    ws.on('close', () => { this.clients.delete(ws); this.subs.delete(ws); });
+    ws.on('close', () => { this.clients.delete(ws); this.subs.delete(ws); this.topicSubs.delete(ws); });
   }
 
   private onMessage(ws: WebSocket, raw: string): void {
@@ -268,6 +324,135 @@ export class WsHub {
           this.send(ws, { type: 'session.created', payload: { state: h.state } });
           break;
         }
+        case 'client.topic.subscribe': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          const { topicId } = env.payload;
+          this.topicSubs.get(ws)?.add(topicId);
+          buildTopicDetail(topicId, td).then((detail) => {
+            this.send(ws, detail);
+          }).catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'subscribe' } });
+          });
+          break;
+        }
+        case 'client.topic.unsubscribe': {
+          this.topicSubs.get(ws)?.delete(env.payload.topicId);
+          break;
+        }
+        case 'client.topic.acceptTask': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          const { sessionId } = env.payload;
+          const task = td.tasks.getBySession(sessionId);
+          const doAccept = task?.type === 'attempt'
+            ? td.topicManager.acceptAttempt(sessionId)
+            : td.topicManager.acceptFixTask(sessionId);
+          doAccept.then(async () => {
+            this.broadcast(buildTopicState(td));
+            if (task) {
+              const detail = await buildTopicDetail(task.topicId, td);
+              this.broadcastTopicDetail(task.topicId, detail);
+            }
+          }).catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'acceptTask' } });
+          });
+          break;
+        }
+        case 'client.topic.discardTask': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          const { sessionId } = env.payload;
+          const task = td.tasks.getBySession(sessionId);
+          const doDiscard = task?.type === 'attempt'
+            ? td.topicManager.discardAttempt(sessionId)
+            : td.topicManager.discardFixTask(sessionId);
+          doDiscard.then(async () => {
+            this.broadcast(buildTopicState(td));
+            if (task) {
+              const detail = await buildTopicDetail(task.topicId, td);
+              this.broadcastTopicDetail(task.topicId, detail);
+            }
+          }).catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'discardTask' } });
+          });
+          break;
+        }
+        case 'client.pr.create': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          if (!td.prLifecycle) return this.sendError(ws, 'PR lifecycle not initialised');
+          const { topicId, title, body } = env.payload;
+          td.prLifecycle.createPR(topicId, { title, body }).then(async () => {
+            this.broadcast(buildTopicState(td));
+            const detail = await buildTopicDetail(topicId, td);
+            this.broadcastTopicDetail(topicId, detail);
+          }).catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'createPR' } });
+          });
+          break;
+        }
+        case 'client.pr.addressFeedback': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          if (!td.prLifecycle) return this.sendError(ws, 'PR lifecycle not initialised');
+          const { topicId, includeCi, includeComments } = env.payload;
+          td.prLifecycle.addressFeedback(topicId, { includeCi, includeComments }).then(async () => {
+            this.broadcast(buildTopicState(td));
+            const detail = await buildTopicDetail(topicId, td);
+            this.broadcastTopicDetail(topicId, detail);
+          }).catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'addressFeedback' } });
+          });
+          break;
+        }
+        case 'client.pr.fixComment': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          if (!td.prLifecycle) return this.sendError(ws, 'PR lifecycle not initialised');
+          const { topicId, threadId } = env.payload;
+          td.prLifecycle.fixComment(topicId, threadId).then(async () => {
+            this.broadcast(buildTopicState(td));
+            const detail = await buildTopicDetail(topicId, td);
+            this.broadcastTopicDetail(topicId, detail);
+          }).catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'fixComment' } });
+          });
+          break;
+        }
+        case 'client.pr.fixCheck': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          if (!td.prLifecycle) return this.sendError(ws, 'PR lifecycle not initialised');
+          const { topicId, checkName } = env.payload;
+          td.prLifecycle.fixCheck(topicId, checkName).then(async () => {
+            this.broadcast(buildTopicState(td));
+            const detail = await buildTopicDetail(topicId, td);
+            this.broadcastTopicDetail(topicId, detail);
+          }).catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'fixCheck' } });
+          });
+          break;
+        }
+        case 'client.pr.watch': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          if (!td.prLifecycle) return this.sendError(ws, 'PR lifecycle not initialised');
+          const { topicId, enable } = env.payload;
+          td.prLifecycle.watchCi(topicId, enable).then(async () => {
+            const detail = await buildTopicDetail(topicId, td);
+            this.broadcastTopicDetail(topicId, detail);
+          }).catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'watch' } });
+          });
+          break;
+        }
+        case 'client.thread.reply': {
+          // Stub — logs and acknowledges; real reply path goes through prLifecycle in a later plan.
+          const { topicId, threadId, body } = env.payload;
+          console.log(`[hub] thread.reply stub: topic=${topicId} thread=${threadId} body=${body.slice(0, 80)}`);
+          break;
+        }
       }
     } catch (e) {
       this.sendError(ws, (e as Error).message, (env as { requestId?: string }).requestId);
@@ -288,5 +473,11 @@ export class WsHub {
 
   private sendToSubscribers(sessionId: string, env: ServerEnvelope): void {
     for (const [ws, ids] of this.subs) if (ids.has(sessionId)) this.send(ws, env);
+  }
+
+  private broadcastTopicDetail(topicId: string, env: ServerEnvelope): void {
+    for (const [ws, ids] of this.topicSubs) {
+      if (ids.has(topicId)) this.send(ws, env);
+    }
   }
 }

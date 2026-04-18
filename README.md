@@ -13,7 +13,10 @@ It's a thin, local wrapper around the official CLI: no API re-implementation, no
 - **One pane, many agents.** Live dashboard with status, current tool, cost, token usage, parse errors and git state per session.
 - **Rich session view.** Markdown with syntax highlighting, side-by-side diffs for `Edit`, file previews for `Write`, plan cards for `ExitPlanMode`, collapsible tool calls and results, streaming as it happens.
 - **Git worktree isolation.** Tick one checkbox in the launcher and claudex cuts a fresh branch off HEAD in a throwaway worktree under `~/.claudex/worktrees/` — safe to run many sessions on the same repo in parallel. Branch name and origin are shown on the dashboard card and session header; worktrees are garbage-collected when the session is deleted.
-- **Topic dashboard (preview).** Sessions are grouped into topics — one card per work item, sorted by activity. Create topics from the "+ New topic" modal: pick a template (Quick fix / Standard / Exploration), select a repo, set a title, optional ticket key, initial prompt, effort level, and permission mode. Template choice auto-sets sensible defaults for effort and permission. Repos are registered inline via the "+ Add repo" link (POST `/api/repo/register`), which auto-detects GitHub fork topology and refreshes the dropdown immediately. Topic detail lands in the next plan.
+- **Topic dashboard.** Sessions are grouped into topics — one card per work item, sorted by activity. Create topics from the "+ New topic" modal: pick a template (Quick fix / Standard / Exploration), select a repo, set a title, optional ticket key, initial prompt, effort level, and permission mode. Click any card to open its detail page.
+- **Topic detail page.** Three-column layout: timeline stepper (Draft → PR opened → Under review → Merge), task list with per-task Accept/Discard, review-comment cards with per-thread Fix and inline reply, CI check panel with rollup badge and per-check Fix. Sticky action bar gates buttons by phase — Create PR (Draft, accepted attempt), Address feedback (Open, unresolved comments or failing CI), Merge (Open, all-green + approvals).
+- **PR lifecycle buttons.** Create PR (pushes branch, opens GitHub PR, auto-enables CI watch), Address feedback (spawns fix task seeded with thread body + CI log tail), per-comment Fix, per-check Fix.
+- **Watch CI.** Toggle per-topic; polls checks every 2 minutes and fires an OS notification on rollup state transitions (running → ok, running → failed, etc.).
 - **Reset.** Wipe a session's context and start a fresh subprocess in place — same card, same cwd, blank slate — without losing the dashboard slot.
 - **Slash-command autocomplete.** Type `/` to search every built-in command, user command, user skill and plugin skill on your machine. Two-tier ranking (prefix → substring), keyboard-driven, scrollable — no truncation.
 - **OS notifications.** Click-through to the session that fired them. Sessions can finish in the background while you work elsewhere.
@@ -52,7 +55,7 @@ Then open http://localhost:5173. Backend runs on `:7878`; Vite proxies `/api` an
 
 ## Roadmap
 
-- **Topic detail + PR lifecycle.** Per-topic page with timeline, tasks, review comments and CI panels. Create PR, Address feedback, Fix CI, Merge — all from claudex. See `docs/superpowers/specs/2026-04-17-worktree-topic-task-ux-design.md`.
+- **Merge.** Real merge action (gh/glab `mergePR` call) and quick-fix auto-accept + auto-PR wiring — Plan 4.
 - **Conflict resolution with AI narrative review.** Sync with main; on conflicts spawn a rebase task that reports a short summary + explicit uncertainties, letting a non-tech user accept/reject without reading diffs.
 - **Flaky CI triage & auto-restart.** Distinguish infrastructure flakes from real failures; rerun flakies rather than "fixing" them.
 - **GitLab support.** `VcsAdapter` is interface-ready; `GitLabAdapter` over `glab` ships after the GitHub path lands.
