@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import type { RepoStore } from './repo.js';
 import type { TopicStore, TopicTemplate } from './topic.js';
@@ -20,7 +21,15 @@ export interface TopicManagerDeps {
   tasks: TaskStore;
   git: Git;
   createWorktree: CreateWt;
-  spawnSession: (args: { cwd: string; label: string; prompt?: string; effort: string; permissionMode: string }) => Promise<SpawnedSession>;
+  spawnSession: (args: {
+    cwd: string;
+    label: string;
+    prompt?: string;
+    effort: string;
+    permissionMode: string;
+    presetUiId?: string;
+    worktree?: { path: string; origin: string; branch: string };
+  }) => Promise<SpawnedSession>;
   deleteSession?: (sessionId: string) => void;
   now: () => number;
   githubLogin: () => Promise<string>;
@@ -92,12 +101,15 @@ export class TopicManager {
     }
     if (!attemptBranch) throw new Error('could not find a free attempt branch name');
 
+    // Create the worktree BEFORE spawning so the Claude subprocess's cwd is the worktree,
+    // not the source repo. Pre-generate the uiId so the worktree dir name matches the session.
+    const presetUiId = randomUUID();
+    const wt = this.d.createWorktree(repo.path, presetUiId, { branch: attemptBranch, base: topic.topicBranch! });
     const session = await this.d.spawnSession({
-      cwd: repo.path, label: args.label ?? `attempt-${nStr}`,
+      cwd: wt.path, label: args.label ?? `attempt-${nStr}`,
       prompt: args.prompt, effort: args.effort, permissionMode: args.permissionMode,
+      presetUiId, worktree: wt,
     });
-    const wt = this.d.createWorktree(repo.path, session.id, { branch: attemptBranch, base: topic.topicBranch! });
-    this.d.db.prepare('UPDATE sessions SET cwd=? WHERE id=?').run(wt.path, session.id);
     return this.d.tasks.create({
       sessionId: session.id, topicId, type: 'attempt',
       label: args.label ?? `attempt-${nStr}`,
@@ -152,16 +164,18 @@ export class TopicManager {
       throw new Error(`cannot add fix task: another task (${running[0].type}) is already running`);
     }
 
+    // Worktree first, spawn inside it.
+    const presetUiId = randomUUID();
+    const childBranch = `${topic.topicBranch}__fix-${presetUiId.slice(0, 6)}`;
+    const wt = this.d.createWorktree(repo.path, presetUiId, { branch: childBranch, base: topic.topicBranch! });
     const session = await this.d.spawnSession({
-      cwd: repo.path,
+      cwd: wt.path,
       label: args.label ?? args.type,
       prompt: args.prompt,
       effort: args.effort,
       permissionMode: args.permissionMode,
+      presetUiId, worktree: wt,
     });
-    const childBranch = `${topic.topicBranch}__fix-${session.id.slice(0, 6)}`;
-    const wt = this.d.createWorktree(repo.path, session.id, { branch: childBranch, base: topic.topicBranch! });
-    this.d.db.prepare('UPDATE sessions SET cwd=? WHERE id=?').run(wt.path, session.id);
     return this.d.tasks.create({
       sessionId: session.id, topicId, type: args.type,
       label: args.label ?? args.type,
