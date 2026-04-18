@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'wouter';
 import { send, subscribe } from '../lib/ws';
 import { useRepos } from '../hooks/use-repos';
 
@@ -34,19 +35,14 @@ const TEMPLATES = [
   { id: 'exploration', title: 'Exploration', blurb: 'Ambiguous scope. Brainstorm first; no branch yet.' },
 ] as const;
 
-const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
-const MODES = ['default', 'plan', 'acceptEdits', 'bypassPermissions'] as const;
-
 export function NewTopicModal({ onClose }: { onClose: () => void }) {
   const repos = useRepos();
+  const [, navigate] = useLocation();
   const [template, setTemplate] = useState<'quick-fix' | 'standard' | 'exploration'>('standard');
   const [repoId, setRepoId] = useState('');
   const [showRegister, setShowRegister] = useState(false);
   const [title, setTitle] = useState('');
   const [ticketKey, setTicketKey] = useState('');
-  const [prompt, setPrompt] = useState('');
-  const [effort, setEffort] = useState<typeof EFFORTS[number]>('medium');
-  const [mode, setMode] = useState<typeof MODES[number]>('acceptEdits');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -55,18 +51,17 @@ export function NewTopicModal({ onClose }: { onClose: () => void }) {
   }, [repos, repoId]);
 
   useEffect(() => {
-    setMode(template === 'exploration' ? 'plan' : 'acceptEdits');
-    setEffort(template === 'quick-fix' ? 'low' : 'medium');
-  }, [template]);
-
-  useEffect(() => {
     return subscribe((m) => {
-      if (m.type === 'server.topic.created') { setSubmitting(false); onClose(); }
+      if (m.type === 'server.topic.created') {
+        setSubmitting(false);
+        onClose();
+        navigate(`/topic/${m.payload.topicId}`);
+      }
       else if (m.type === 'server.topic.error') {
         if (m.payload.ctx === 'create') { setError(m.payload.message); setSubmitting(false); }
       }
     });
-  }, [onClose]);
+  }, [onClose, navigate]);
 
   const canSubmit = !!repoId && !!title.trim() && !submitting;
 
@@ -79,7 +74,6 @@ export function NewTopicModal({ onClose }: { onClose: () => void }) {
       payload: {
         repoId, template, title: title.trim(),
         ticketKey: ticketKey.trim() || undefined,
-        firstTask: { prompt: prompt.trim() || undefined, effort, permissionMode: mode },
       },
     });
   }
@@ -129,26 +123,6 @@ export function NewTopicModal({ onClose }: { onClose: () => void }) {
           <span className="text-zinc-300">Ticket (optional)</span>
           <input type="text" value={ticketKey} onChange={(e) => setTicketKey(e.target.value)} placeholder="ABC-123" className="mt-1 w-full rounded bg-zinc-800 px-3 py-2 text-sm outline-none ring-1 ring-zinc-700 focus:ring-blue-500" />
         </label>
-
-        <label className="mb-3 block text-sm">
-          <span className="text-zinc-300">Initial prompt {template === 'exploration' ? '(optional)' : ''}</span>
-          <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} placeholder="What should the session do first?" className="mt-1 w-full rounded bg-zinc-800 px-3 py-2 text-sm outline-none ring-1 ring-zinc-700 focus:ring-blue-500" />
-        </label>
-
-        <div className="mb-3 grid grid-cols-2 gap-2 text-sm">
-          <label className="block">
-            <span className="text-zinc-300">Effort</span>
-            <select value={effort} onChange={(e) => setEffort(e.target.value as typeof EFFORTS[number])} className="mt-1 w-full rounded bg-zinc-800 px-3 py-2 outline-none ring-1 ring-zinc-700 focus:ring-blue-500">
-              {EFFORTS.map((e) => <option key={e} value={e}>{e}</option>)}
-            </select>
-          </label>
-          <label className="block">
-            <span className="text-zinc-300">Permission</span>
-            <select value={mode} onChange={(e) => setMode(e.target.value as typeof MODES[number])} className="mt-1 w-full rounded bg-zinc-800 px-3 py-2 outline-none ring-1 ring-zinc-700 focus:ring-blue-500">
-              {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </label>
-        </div>
 
         {error && <div className="mb-3 rounded bg-red-900/40 p-2 text-xs text-red-200">{error}</div>}
 

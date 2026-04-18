@@ -6,7 +6,6 @@ export type TopicClientMessage =
       ticketKey?: string;
       typeField?: string;
       project?: string;
-      firstTask: { prompt?: string; effort: string; permissionMode: string; label?: string };
     } }
   | { type: 'client.topic.addAttempt'; payload: { topicId: string; prompt?: string; effort: string; permissionMode: string; label?: string } }
   | { type: 'client.topic.accept'; payload: { sessionId: string } }
@@ -27,7 +26,7 @@ export type TopicClientMessage =
 
 export type TopicServerMessage =
   | { type: 'server.topic.state'; payload: { topics: TopicCard[] } }
-  | { type: 'server.topic.created'; payload: { topicId: string; sessionId: string } }
+  | { type: 'server.topic.created'; payload: { topicId: string } }
   | { type: 'server.topic.error'; payload: { message: string; ctx?: string } }
   | { type: 'server.repo.state'; payload: { repos: RepoRow[] } }
   | { type: 'server.topic.detail'; payload: TopicDetailBundle }

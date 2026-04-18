@@ -28,12 +28,12 @@ describe('TopicManager end-to-end (stubbed git/spawn/worktree)', () => {
     });
 
     const repo = repos.register({ path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin', defaultBranch: 'main' });
-    const { topic, task } = await mgr.create({
+    const { topic } = await mgr.create({
       repoId: repo.id, template: 'standard', title: 'Fix X', ticketKey: 'ABC-1',
-      firstTask: { effort: 'medium', permissionMode: 'acceptEdits' },
     });
     expect(topic.phase).toBe('Draft');
 
+    const task = await mgr.addAttempt(topic.id, { effort: 'medium', permissionMode: 'acceptEdits' });
     await mgr.addAttempt(topic.id, { effort: 'medium', permissionMode: 'acceptEdits' });
     const tasksOnTopic = tasks.listByTopic(topic.id);
     expect(tasksOnTopic.filter((t) => t.type === 'attempt')).toHaveLength(2);

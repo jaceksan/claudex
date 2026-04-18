@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useTopicDetail } from '../hooks/use-topic-detail';
 import { send } from '../lib/ws';
@@ -7,10 +8,12 @@ import { TaskPanel } from '../components/task-panel';
 import { CommentsPanel } from '../components/comments-panel';
 import { CiPanel } from '../components/ci-panel';
 import { ActionBar } from '../components/action-bar';
+import { AddAttemptModal } from '../components/add-attempt-modal';
 
 export default function TopicPage({ id }: { id: string }) {
   const detail = useTopicDetail(id);
   const [, navigate] = useLocation();
+  const [showAddAttempt, setShowAddAttempt] = useState(false);
 
   if (!detail) {
     return (
@@ -47,7 +50,7 @@ export default function TopicPage({ id }: { id: string }) {
     send({ type: 'client.pr.watch', payload: { topicId: id, enable } });
   }
   function handleAddAttempt() {
-    navigate(`/?newAttempt=${id}`);
+    setShowAddAttempt(true);
   }
 
   return (
@@ -96,6 +99,9 @@ export default function TopicPage({ id }: { id: string }) {
         onAddressFeedback={handleAddressFeedback}
         onAddAttempt={handleAddAttempt}
       />
+      {showAddAttempt && (
+        <AddAttemptModal topicId={id} onClose={() => setShowAddAttempt(false)} />
+      )}
     </div>
   );
 }

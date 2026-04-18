@@ -33,7 +33,6 @@ export interface CreateTopicInput {
   ticketKey?: string | null;
   type?: string;
   project?: string;
-  firstTask: { prompt?: string; effort: string; permissionMode: string; label?: string };
 }
 
 export class TopicManager {
@@ -49,15 +48,7 @@ export class TopicManager {
         repoId: repo.id, phase: 'Exploring', template: 'exploration',
         title: input.title, slug, ticketKey: input.ticketKey ?? null, topicBranch: null,
       });
-      const session = await this.d.spawnSession({
-        cwd: repo.path, label: input.firstTask.label ?? 'explore',
-        prompt: input.firstTask.prompt, effort: input.firstTask.effort,
-        permissionMode: input.firstTask.permissionMode,
-      });
-      const task = this.d.tasks.create({
-        sessionId: session.id, topicId: topic.id, type: 'free', label: 'explore',
-      });
-      return { topic, task };
+      return { topic };
     }
 
     const ghUser = await this.d.githubLogin();
@@ -74,23 +65,7 @@ export class TopicManager {
       repoId: repo.id, phase: 'Draft', template: input.template,
       title: input.title, slug, ticketKey: input.ticketKey ?? null, topicBranch,
     });
-
-    const attemptBranch = topicBranch + renderBranchTemplate(repo.attemptSuffix, { n: '1' });
-    const session = await this.d.spawnSession({
-      cwd: repo.path,
-      label: input.firstTask.label ?? 'attempt-1',
-      prompt: input.firstTask.prompt, effort: input.firstTask.effort,
-      permissionMode: input.firstTask.permissionMode,
-    });
-    const wt = this.d.createWorktree(repo.path, session.id, { branch: attemptBranch, base: topicBranch });
-    this.d.db.prepare('UPDATE sessions SET cwd=? WHERE id=?').run(wt.path, session.id);
-
-    const task = this.d.tasks.create({
-      sessionId: session.id, topicId: topic.id, type: 'attempt',
-      label: input.firstTask.label ?? 'attempt-1',
-      childBranch: attemptBranch, worktreePath: wt.path,
-    });
-    return { topic, task };
+    return { topic };
   }
 
   async addAttempt(topicId: string, args: { prompt?: string; effort: string; permissionMode: string; label?: string }) {

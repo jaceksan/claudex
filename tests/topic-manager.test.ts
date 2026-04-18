@@ -31,45 +31,40 @@ describe('TopicManager.create', () => {
     });
   });
 
-  it('creates Draft topic with attempt-1 when template=standard', async () => {
+  it('creates Draft topic with branch but NO attempt when template=standard', async () => {
     const repo = repos.register({
       path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin',
       defaultBranch: 'main',
     });
-    const { topic, task } = await mgr.create({
+    const { topic } = await mgr.create({
       repoId: repo.id, template: 'standard',
       title: 'Fix login copy', ticketKey: 'ABC-123',
-      firstTask: { prompt: 'start', effort: 'medium', permissionMode: 'acceptEdits' },
     });
     expect(topic.phase).toBe('Draft');
     expect(topic.topicBranch).toBe('jaceksan/ABC-123_fix-login-copy');
-    expect(task.type).toBe('attempt');
-    expect(task.childBranch).toBe('jaceksan/ABC-123_fix-login-copy__attempt-1');
     expect(gitCalls.map((c) => c.args[0])).toContain('fetch');
     expect(gitCalls.map((c) => c.args[0])).toContain('branch');
+    expect(tasks.listByTopic(topic.id)).toHaveLength(0);
   });
 
-  it('creates Exploring topic with no branch/worktree when template=exploration', async () => {
+  it('creates Exploring topic with no branch and NO task when template=exploration', async () => {
     const repo = repos.register({ path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin', defaultBranch: 'main' });
-    const { topic, task } = await mgr.create({
+    const { topic } = await mgr.create({
       repoId: repo.id, template: 'exploration',
       title: 'Explore refactor',
-      firstTask: { effort: 'medium', permissionMode: 'plan' },
     });
     expect(topic.phase).toBe('Exploring');
     expect(topic.topicBranch).toBeNull();
-    expect(task.childBranch).toBeNull();
-    expect(task.worktreePath).toBeNull();
+    expect(tasks.listByTopic(topic.id)).toHaveLength(0);
   });
 
   it('throws when repoId does not resolve', async () => {
     await expect(mgr.create({
       repoId: 'repo_zzzz', template: 'standard', title: 'x',
-      firstTask: { effort: 'medium', permissionMode: 'acceptEdits' },
     })).rejects.toThrow(/not found/);
   });
 
-  it('addAttempt creates a second attempt-2 child branch', async () => {
+  it('addAttempt creates attempt-1 branch when topic has no attempts yet', async () => {
     const repo = repos.register({
       path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin',
       defaultBranch: 'main',
@@ -77,12 +72,12 @@ describe('TopicManager.create', () => {
     const { topic } = await mgr.create({
       repoId: repo.id, template: 'standard',
       title: 'My feature', ticketKey: 'XY-1',
-      firstTask: { effort: 'medium', permissionMode: 'acceptEdits' },
     });
+    const task1 = await mgr.addAttempt(topic.id, { effort: 'medium', permissionMode: 'acceptEdits' });
+    expect(task1.type).toBe('attempt');
+    expect(task1.childBranch).toMatch(/__attempt-1$/);
     const task2 = await mgr.addAttempt(topic.id, { effort: 'medium', permissionMode: 'acceptEdits' });
-    expect(task2.type).toBe('attempt');
     expect(task2.childBranch).toMatch(/__attempt-2$/);
-    expect(task2.worktreePath).toBeTruthy();
   });
 
   it('acceptAttempt squash-merges, marks accepted, discards siblings', async () => {
@@ -90,11 +85,11 @@ describe('TopicManager.create', () => {
       path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin',
       defaultBranch: 'main',
     });
-    const { topic, task: task1 } = await mgr.create({
+    const { topic } = await mgr.create({
       repoId: repo.id, template: 'standard',
       title: 'My feature', ticketKey: 'XY-1',
-      firstTask: { effort: 'medium', permissionMode: 'acceptEdits' },
     });
+    const task1 = await mgr.addAttempt(topic.id, { effort: 'medium', permissionMode: 'acceptEdits' });
     const task2 = await mgr.addAttempt(topic.id, { effort: 'medium', permissionMode: 'acceptEdits' });
 
     gitCalls.length = 0; // reset to capture only acceptAttempt calls
@@ -120,11 +115,11 @@ describe('TopicManager.create', () => {
       path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin',
       defaultBranch: 'main',
     });
-    const { task } = await mgr.create({
+    const { topic } = await mgr.create({
       repoId: repo.id, template: 'standard',
       title: 'My feature',
-      firstTask: { effort: 'medium', permissionMode: 'acceptEdits' },
     });
+    const task = await mgr.addAttempt(topic.id, { effort: 'medium', permissionMode: 'acceptEdits' });
     await mgr.discardAttempt(task.sessionId);
     const after = tasks.getBySession(task.sessionId)!;
     expect(after.discardedAt).not.toBeNull();
@@ -135,29 +130,18 @@ describe('TopicManager.create', () => {
       path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin',
       defaultBranch: 'main',
     });
-    const { topic, task } = await mgr.create({
+    const { topic } = await mgr.create({
       repoId: repo.id, template: 'standard',
       title: 'My feature',
-      firstTask: { effort: 'medium', permissionMode: 'acceptEdits' },
     });
+    const task = await mgr.addAttempt(topic.id, { effort: 'medium', permissionMode: 'acceptEdits' });
     await mgr.acceptAttempt(task.sessionId);
     await expect(mgr.addAttempt(topic.id, { effort: 'medium', permissionMode: 'acceptEdits' }))
       .rejects.toThrow(/cannot add attempt after accept/);
   });
 
-  it('acceptAttempt throws on non-attempt task', async () => {
-    const repo = repos.register({
-      path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin',
-      defaultBranch: 'main',
-    });
-    const { topic } = await mgr.create({
-      repoId: repo.id, template: 'exploration',
-      title: 'Explore stuff',
-      firstTask: { effort: 'medium', permissionMode: 'plan' },
-    });
-    const freeTasks = tasks.listByTopic(topic.id);
-    expect(freeTasks[0].type).toBe('free');
-    await expect(mgr.acceptAttempt(freeTasks[0].sessionId)).rejects.toThrow(/not an attempt task/);
+  it('acceptAttempt throws on missing session', async () => {
+    await expect(mgr.acceptAttempt('sess_nope')).rejects.toThrow(/not found/);
   });
 });
 
@@ -194,13 +178,12 @@ describe('TopicManager.addFixTask', () => {
 
   async function createOpenTopic() {
     const repo = makeRepo();
-    // Create a Draft topic with an accepted attempt — simulates Open state after PR opened.
-    const { topic, task } = await mgr.create({
+    // Create a Draft topic, add an attempt, accept it — simulates Open state after PR opened.
+    const { topic } = await mgr.create({
       repoId: repo.id, template: 'standard',
       title: 'My feature', ticketKey: 'T-1',
-      firstTask: { prompt: 'start', effort: 'medium', permissionMode: 'acceptEdits' },
     });
-    // Mark the session idle so acceptAttempt doesn't trip over running-task guard.
+    const task = await mgr.addAttempt(topic.id, { prompt: 'start', effort: 'medium', permissionMode: 'acceptEdits' });
     db.prepare("UPDATE sessions SET status='idle' WHERE id=?").run(task.sessionId);
     await mgr.acceptAttempt(task.sessionId);
     // Force topic to Open phase (as would happen when PR is opened).
@@ -214,7 +197,6 @@ describe('TopicManager.addFixTask', () => {
     const { topic } = await mgr.create({
       repoId: repo.id, template: 'standard',
       title: 'My feature',
-      firstTask: { effort: 'medium', permissionMode: 'acceptEdits' },
     });
     db.prepare("UPDATE topic SET phase='Merged' WHERE id=?").run(topic.id);
     await expect(mgr.addFixTask(topic.id, {
@@ -227,7 +209,6 @@ describe('TopicManager.addFixTask', () => {
     const { topic } = await mgr.create({
       repoId: repo.id, template: 'standard',
       title: 'My feature',
-      firstTask: { effort: 'medium', permissionMode: 'acceptEdits' },
     });
     // Topic is Draft with no accepted attempt.
     await expect(mgr.addFixTask(topic.id, {
@@ -256,11 +237,11 @@ describe('TopicManager.addFixTask', () => {
 
   it('happy path on Draft phase with accepted attempt', async () => {
     const repo = makeRepo();
-    const { topic, task } = await mgr.create({
+    const { topic } = await mgr.create({
       repoId: repo.id, template: 'standard',
       title: 'My feature', ticketKey: 'T-2',
-      firstTask: { prompt: 'start', effort: 'medium', permissionMode: 'acceptEdits' },
     });
+    const task = await mgr.addAttempt(topic.id, { prompt: 'start', effort: 'medium', permissionMode: 'acceptEdits' });
     db.prepare("UPDATE sessions SET status='idle' WHERE id=?").run(task.sessionId);
     await mgr.acceptAttempt(task.sessionId);
     const updatedTopic = topics.getById(topic.id)!;
@@ -308,13 +289,13 @@ describe('TopicManager.addFixTask', () => {
     const { topic } = await mgr.create({
       repoId: repo.id, template: 'standard',
       title: 'My feature',
-      firstTask: { effort: 'medium', permissionMode: 'acceptEdits' },
     });
+    await mgr.addAttempt(topic.id, { effort: 'medium', permissionMode: 'acceptEdits' });
     // Force topic to Open phase with acceptedAttemptId set (fake it).
     db.prepare("UPDATE topic SET phase='Open', accepted_attempt_id='fake' WHERE id=?").run(topic.id);
     const updatedTopic = topics.getById(topic.id)!;
 
-    // The original attempt session is still 'running' — guard should trigger.
+    // The attempt session is still 'running' — guard should trigger.
     await expect(mgr.addFixTask(updatedTopic.id, {
       type: 'fix-comments', prompt: 'fix', effort: 'low', permissionMode: 'acceptEdits',
     })).rejects.toThrow(/another task.*is already running/);
@@ -362,11 +343,11 @@ describe('TopicManager.acceptFixTask / discardFixTask', () => {
   async function createOpenTopicWithFixTask() {
     const repo = makeRepo();
     // create Draft topic + attempt
-    const { topic, task: attemptTask } = await mgr.create({
+    const { topic } = await mgr.create({
       repoId: repo.id, template: 'standard',
       title: 'My feature', ticketKey: 'T-1',
-      firstTask: { prompt: 'start', effort: 'medium', permissionMode: 'acceptEdits' },
     });
+    const attemptTask = await mgr.addAttempt(topic.id, { prompt: 'start', effort: 'medium', permissionMode: 'acceptEdits' });
     db.prepare("UPDATE sessions SET status='idle' WHERE id=?").run(attemptTask.sessionId);
     await mgr.acceptAttempt(attemptTask.sessionId);
     db.prepare("UPDATE topic SET phase='Open' WHERE id=?").run(topic.id);
@@ -415,10 +396,11 @@ describe('TopicManager.acceptFixTask / discardFixTask', () => {
 
   it('acceptFixTask: throws when task type is attempt', async () => {
     const repo = makeRepo();
-    const { task } = await mgr.create({
+    const { topic } = await mgr.create({
       repoId: repo.id, template: 'standard',
-      title: 'feat', firstTask: { effort: 'medium', permissionMode: 'acceptEdits' },
+      title: 'feat',
     });
+    const task = await mgr.addAttempt(topic.id, { effort: 'medium', permissionMode: 'acceptEdits' });
     await expect(mgr.acceptFixTask(task.sessionId)).rejects.toThrow(/not a fix task/);
   });
 
@@ -435,10 +417,11 @@ describe('TopicManager.acceptFixTask / discardFixTask', () => {
 
   it('discardFixTask: throws on non-fix-task', async () => {
     const repo = makeRepo();
-    const { task } = await mgr.create({
+    const { topic } = await mgr.create({
       repoId: repo.id, template: 'standard',
-      title: 'feat', firstTask: { effort: 'medium', permissionMode: 'acceptEdits' },
+      title: 'feat',
     });
+    const task = await mgr.addAttempt(topic.id, { effort: 'medium', permissionMode: 'acceptEdits' });
     await expect(mgr.discardFixTask(task.sessionId)).rejects.toThrow(/not a fix task/);
   });
 });

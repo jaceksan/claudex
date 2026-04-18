@@ -238,11 +238,11 @@ export class WsHub {
         case 'client.topic.create': {
           const td = this.topicDeps;
           if (!td) return this.sendError(ws, 'topic support not initialised');
-          const { repoId, template, title, ticketKey, typeField, project, firstTask } = env.payload;
+          const { repoId, template, title, ticketKey, typeField, project } = env.payload;
           td.topicManager.create({
-            repoId, template, title, ticketKey, type: typeField, project, firstTask,
-          }).then(({ topic, task }) => {
-            this.broadcast({ type: 'server.topic.created', payload: { topicId: topic.id, sessionId: task.sessionId } });
+            repoId, template, title, ticketKey, type: typeField, project,
+          }).then(({ topic }) => {
+            this.broadcast({ type: 'server.topic.created', payload: { topicId: topic.id } });
             this.broadcast(buildTopicState(td));
           }).catch((e: Error) => {
             this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'create' } });
