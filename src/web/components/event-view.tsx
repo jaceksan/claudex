@@ -111,21 +111,33 @@ function ToolUseView({ block }: { block: ToolUseBlock }) {
 
 function ToolResultView({ block }: { block: ToolResultBlock }) {
   const text = typeof block.content === 'string' ? block.content : JSON.stringify(block.content, null, 2);
-  const short = text.length <= 400 && text.split('\n').length <= 8;
-  const border = block.is_error ? 'border-red-500/70' : 'border-zinc-700';
-  const textColor = block.is_error ? 'text-red-300' : 'text-zinc-300';
 
+  // Tool errors — including "Path does not exist" and similar speculative-call failures —
+  // always render as a muted one-line collapsible. LLM exploration routinely trips these;
+  // showing a scary red block every time is noisy and obscures the real signal when the
+  // error is actually fatal. User can click to expand the full text either way.
+  if (block.is_error) {
+    const firstLine = text.split('\n').find((l) => l.trim().length > 0)?.trim() ?? '(empty)';
+    const summary = firstLine.length > 140 ? firstLine.slice(0, 137) + '…' : firstLine;
+    return (
+      <Collapsible summary={<span className="text-zinc-500"><span className="text-amber-500/80">⚠</span> tool error · <span className="text-zinc-400">{summary}</span></span>}>
+        <pre className="overflow-auto max-h-96 whitespace-pre-wrap rounded border border-zinc-800 bg-zinc-950/60 px-2 py-1 text-xs text-zinc-400">{text}</pre>
+      </Collapsible>
+    );
+  }
+
+  const short = text.length <= 400 && text.split('\n').length <= 8;
   if (short) {
     return (
-      <pre className={`overflow-auto whitespace-pre-wrap rounded border ${border} bg-zinc-950/60 px-2 py-1 text-xs ${textColor}`}>
+      <pre className="overflow-auto whitespace-pre-wrap rounded border border-zinc-700 bg-zinc-950/60 px-2 py-1 text-xs text-zinc-300">
         {text || <span className="italic text-zinc-500">(empty)</span>}
       </pre>
     );
   }
 
   return (
-    <Collapsible summary={<span className={block.is_error ? 'text-red-400' : 'text-zinc-500'}>{block.is_error ? 'result (error)' : 'result'} · {text.split('\n').length} lines</span>}>
-      <pre className={`overflow-auto max-h-96 whitespace-pre-wrap text-xs ${textColor}`}>{text}</pre>
+    <Collapsible summary={<span className="text-zinc-500">result · {text.split('\n').length} lines</span>}>
+      <pre className="overflow-auto max-h-96 whitespace-pre-wrap text-xs text-zinc-300">{text}</pre>
     </Collapsible>
   );
 }
