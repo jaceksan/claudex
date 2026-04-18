@@ -1,0 +1,30 @@
+src/server/ws/topic-envelope.ts
+  7a240c56656ec247 9,16,36-40
+src/server/ws/hub.ts
+  7a240c56656ec247 15-16,19,252,254,298-331
+  fc742e1a06a3e927 20
+src/web/components/new-topic-modal.tsx
+  7a240c56656ec247 1,38-43,54-57,63-80,83-86,90,92,97-98,109,160-195
+src/server/topic-manager.ts
+  7a240c56656ec247 46,65-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "017041296f9d228e007616ee4010fbfcb64d3f52",
+  "prompts": {
+    "7a240c56656ec247": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28cd815a-90e4-4f16-b2c1-5aacb321a562",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 134,
+      "total_deletions": 14,
+      "accepted_lines": 964,
+      "overriden_lines": 0
+    }
+  }
+}
