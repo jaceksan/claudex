@@ -410,7 +410,13 @@ export class WsHub {
           const cwd = existing.state.cwd;
           const events = this.transcripts.readEvents(claudeId);
           const h = this.manager.resume({ cwd, uiId, claudeSessionId: claudeId, backlog: events });
-          this.send(ws, { type: 'session.created', payload: { state: h.state } });
+          // Replay to every subscriber (this socket plus any other open tab) so their
+          // event list is repopulated from the transcript. session.created alone only
+          // delivers state, leaving the UI's events array empty after resume.
+          this.sendToSubscribers(h.id, {
+            type: 'session.replay',
+            payload: { state: h.state, events: [...h.eventLog] },
+          });
           break;
         }
         case 'client.topic.subscribe': {
