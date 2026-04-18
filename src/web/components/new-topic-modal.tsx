@@ -101,20 +101,30 @@ export function NewTopicModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        <label className="mb-1 block text-sm">
-          <span className="text-zinc-300">Repo</span>
-          <select value={repoId} onChange={(e) => setRepoId(e.target.value)} className="mt-1 w-full rounded bg-zinc-800 px-3 py-2 text-sm outline-none ring-1 ring-zinc-700 focus:ring-blue-500" disabled={repos.length === 0}>
-            {repos.length === 0 ? <option value="">(register a repo first)</option> : null}
-            {repos.map((r) => <option key={r.id} value={r.id}>{r.canonicalOwner}/{r.canonicalName || r.path}</option>)}
-          </select>
-        </label>
-        <div className="mb-3 text-right">
-          <button type="button" onClick={() => setShowRegister((v) => !v)} className="text-xs text-blue-400 hover:underline">
-            {showRegister ? '— hide' : '+ Add repo'}
-          </button>
-        </div>
-        {(showRegister || repos.length === 0) && (
-          <RegisterRepoInline onRegistered={() => setShowRegister(false)} />
+        {repos.length > 0 ? (
+          <>
+            <label className="mb-1 block text-sm">
+              <span className="text-zinc-300">Repo</span>
+              <select value={repoId} onChange={(e) => setRepoId(e.target.value)} className="mt-1 w-full rounded bg-zinc-800 px-3 py-2 text-sm outline-none ring-1 ring-zinc-700 focus:ring-blue-500">
+                {repos.map((r) => <option key={r.id} value={r.id}>{r.canonicalOwner}/{r.canonicalName || r.path}</option>)}
+              </select>
+            </label>
+            <div className="mb-3 text-right">
+              <button type="button" onClick={() => setShowRegister((v) => !v)} className="text-xs text-blue-400 hover:underline">
+                {showRegister ? '— hide' : '+ Add repo'}
+              </button>
+            </div>
+            {showRegister && (
+              <RegisterRepoInline onRegistered={() => setShowRegister(false)} />
+            )}
+          </>
+        ) : (
+          <>
+            <div className="mb-2 text-xs text-zinc-400">
+              Register your first repository
+            </div>
+            <RegisterRepoInline onRegistered={() => setShowRegister(false)} />
+          </>
         )}
 
         <label className="mb-3 block text-sm">
