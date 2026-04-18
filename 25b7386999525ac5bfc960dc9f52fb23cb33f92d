@@ -1,0 +1,27 @@
+src/server/topic-manager.ts
+  7a240c56656ec247 135-176
+tests/topic-manager.test.ts
+  7a240c56656ec247 163-322
+src/server/task.ts
+  7a240c56656ec247 59-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "25b7386999525ac5bfc960dc9f52fb23cb33f92d",
+  "prompts": {
+    "7a240c56656ec247": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28cd815a-90e4-4f16-b2c1-5aacb321a562",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 214,
+      "total_deletions": 0,
+      "accepted_lines": 581,
+      "overriden_lines": 0
+    }
+  }
+}
