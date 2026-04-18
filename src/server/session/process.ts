@@ -12,6 +12,7 @@ export interface SessionProcessOptions {
   resumeSessionId?: string;
   effort?: EffortLevel;
   env?: NodeJS.ProcessEnv;
+  appendSystemPrompt?: string; // forwarded as --append-system-prompt
 }
 
 type Events = {
@@ -112,6 +113,7 @@ export class SessionProcess extends EventEmitter {
     if (this.opts.permissionMode) args.push('--permission-mode', this.opts.permissionMode);
     if (this.opts.resumeSessionId) args.push('--resume', this.opts.resumeSessionId);
     if (this.opts.effort) args.push('--effort', this.opts.effort);
+    if (this.opts.appendSystemPrompt) args.push('--append-system-prompt', this.opts.appendSystemPrompt);
     return args;
   }
 }

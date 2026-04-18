@@ -29,6 +29,7 @@ export interface TopicManagerDeps {
     permissionMode: string;
     presetUiId?: string;
     worktree?: { path: string; origin: string; branch: string };
+    appendSystemPrompt?: string;
   }) => Promise<SpawnedSession>;
   deleteSession?: (sessionId: string) => void;
   now: () => number;
@@ -115,6 +116,7 @@ export class TopicManager {
       cwd: wt.path, label: args.label ?? `attempt-${nStr}`,
       prompt: args.prompt, effort: args.effort, permissionMode: args.permissionMode,
       presetUiId, worktree: wt,
+      appendSystemPrompt: orientationHint({ cwd: wt.path, branch: attemptBranch, base: topic.topicBranch! }),
     });
     return this.d.tasks.create({
       sessionId: session.id, topicId, type: 'attempt',
@@ -181,6 +183,7 @@ export class TopicManager {
       effort: args.effort,
       permissionMode: args.permissionMode,
       presetUiId, worktree: wt,
+      appendSystemPrompt: orientationHint({ cwd: wt.path, branch: childBranch, base: topic.topicBranch! }),
     });
     return this.d.tasks.create({
       sessionId: session.id, topicId, type: args.type,
@@ -257,4 +260,8 @@ export class TopicManager {
 
     this.d.topics.delete(topicId);
   }
+}
+
+function orientationHint(args: { cwd: string; branch: string; base: string }): string {
+  return `You are in a fresh git worktree at ${args.cwd}, on branch ${args.branch} cut from ${args.base}. The working tree mirrors that base branch, so file/directory layout may differ from other branches you've seen in this repo. Run \`git status\` and \`ls\` or \`tree -L 2\` to orient before assuming paths.`;
 }

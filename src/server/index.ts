@@ -60,13 +60,14 @@ const topicManager = new TopicManager({
   repos, topics, tasks,
   git: async (args, cwd) => execFileP('git', args, { cwd: cwd ?? process.cwd() }).then((r) => r.stdout),
   createWorktree: (cwd, id, opts) => createWorktree(cwd, id, opts),
-  spawnSession: async ({ cwd, label, prompt, effort, permissionMode, presetUiId, worktree }) => {
+  spawnSession: async ({ cwd, label, prompt, effort, permissionMode, presetUiId, worktree, appendSystemPrompt }) => {
     const s = manager.create({
       cwd, label: label ?? undefined, prompt,
       effort: effort as Parameters<typeof manager.create>[0]['effort'],
       permissionMode,
       presetUiId,
       worktree,
+      appendSystemPrompt,
     });
     return { id: s.id };
   },

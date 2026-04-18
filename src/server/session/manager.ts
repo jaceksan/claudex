@@ -32,6 +32,7 @@ export interface CreateSessionOpts {
   useWorktree?: boolean;        // Launch this session in a fresh git worktree off opts.cwd.
   /** Pre-created worktree metadata — set internally when rehydrating. */
   worktree?: WorktreeInfo;
+  appendSystemPrompt?: string;  // Orientation hint stickied across turns via claude CLI.
 }
 
 type SpawnOverride = (opts: CreateSessionOpts) => { command?: string; args?: string[] };
@@ -76,6 +77,7 @@ export class SessionManager extends EventEmitter {
       permissionMode: opts.permissionMode,
       resumeSessionId: opts.resumeSessionId,
       effort,
+      appendSystemPrompt: opts.appendSystemPrompt,
       ...this.opts.spawnOverride?.(opts),
     };
     const proc = new SessionProcess(processOpts);
