@@ -144,6 +144,40 @@ describe('TopicManager.create', () => {
     await expect(mgr.acceptAttempt('sess_nope')).rejects.toThrow(/not found/);
   });
 
+  it('addAttempt bumps counter past a leftover branch from a partial failure', async () => {
+    // Git fake reports attempt-1 branch as already existing (leftover from a
+    // prior spawn that crashed before the task row landed). addAttempt should
+    // pick attempt-2 instead of failing.
+    const existingBranches = new Set(['jaceksan/fix-bump__attempt-1']);
+    mgr = new TopicManager({
+      db, repos, topics, tasks,
+      git: async (args) => {
+        if (args[0] === 'branch' && args[1] === '--list') {
+          return existingBranches.has(args[2]) ? `  ${args[2]}\n` : '';
+        }
+        return '';
+      },
+      createWorktree: (cwd, id, opts) => ({ path: `/tmp/wt/${id}`, origin: cwd, branch: opts.branch }),
+      spawnSession: async ({ cwd, label }) => {
+        const id = `sess_${Math.random().toString(36).slice(2, 8)}`;
+        db.prepare("INSERT INTO sessions (id, cwd, label, status, created_at, last_event_at) VALUES (?,?,?,'running',?,?)")
+          .run(id, cwd, label ?? null, Date.now(), Date.now());
+        return { id };
+      },
+      now: () => 1700000000000,
+      githubLogin: async () => 'jaceksan',
+    });
+    const repo = repos.register({
+      path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin',
+      defaultBranch: 'main',
+    });
+    const { topic } = await mgr.create({
+      repoId: repo.id, template: 'standard', title: 'fix bump',
+    });
+    const task = await mgr.addAttempt(topic.id, { effort: 'medium', permissionMode: 'acceptEdits' });
+    expect(task.childBranch).toMatch(/__attempt-2$/);
+  });
+
   it('deleteTopic cascades: kills sessions, drops branch, removes topic + task rows', async () => {
     const repo = repos.register({
       path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin',

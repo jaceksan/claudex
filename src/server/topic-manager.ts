@@ -76,17 +76,31 @@ export class TopicManager {
     if (topic.acceptedAttemptId) throw new Error('cannot add attempt after accept — use fix task');
     const repo = this.d.repos.getById(topic.repoId)!;
     const existing = this.d.tasks.listByTopic(topicId).filter((t) => t.type === 'attempt');
-    const n = String(existing.length + 1);
-    const attemptBranch = topic.topicBranch! + renderBranchTemplate(repo.attemptSuffix, { n });
+
+    // Find a free attempt number. Leftover branches from prior partial failures
+    // (session spawn crashed after the branch was created, or a prior discard that
+    // didn't drop the branch) would otherwise collide with `git worktree add -b`.
+    let attemptBranch = '';
+    let nStr = '';
+    const maxAttempts = existing.length + 50;
+    for (let n = existing.length + 1; n <= maxAttempts; n++) {
+      nStr = String(n);
+      attemptBranch = topic.topicBranch! + renderBranchTemplate(repo.attemptSuffix, { n: nStr });
+      // `git branch --list <name>` is empty when the branch doesn't exist.
+      const existsOutput = await this.d.git(['branch', '--list', attemptBranch], repo.path);
+      if (existsOutput.trim() === '') break;
+    }
+    if (!attemptBranch) throw new Error('could not find a free attempt branch name');
+
     const session = await this.d.spawnSession({
-      cwd: repo.path, label: args.label ?? `attempt-${n}`,
+      cwd: repo.path, label: args.label ?? `attempt-${nStr}`,
       prompt: args.prompt, effort: args.effort, permissionMode: args.permissionMode,
     });
     const wt = this.d.createWorktree(repo.path, session.id, { branch: attemptBranch, base: topic.topicBranch! });
     this.d.db.prepare('UPDATE sessions SET cwd=? WHERE id=?').run(wt.path, session.id);
     return this.d.tasks.create({
       sessionId: session.id, topicId, type: 'attempt',
-      label: args.label ?? `attempt-${n}`,
+      label: args.label ?? `attempt-${nStr}`,
       childBranch: attemptBranch, worktreePath: wt.path,
     });
   }
