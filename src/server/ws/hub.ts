@@ -122,7 +122,14 @@ export class WsHub {
     topicDeps?: TopicDeps,
   ) {
     if (topicDeps) this.topicDeps = topicDeps;
-    manager.on('created', (h) => this.broadcast({ type: 'session.created', payload: { state: h.state } }));
+    manager.on('created', (h) => {
+      // Persist the row immediately so downstream code (e.g. task.create with a FK
+      // on sessions.id) can reference the session before Claude CLI emits its first
+      // stream event. Prompt-less spawns stay silent until the user types, so we
+      // can't rely on the 'event' handler here.
+      this.db.upsertSession({ id: h.id, claudeSessionId: h.state.claudeSessionId, cwd: h.state.cwd, label: h.state.title, status: h.state.status, effort: h.state.effort, worktreeOrigin: h.state.worktreeOrigin, worktreeBranch: h.state.worktreeBranch });
+      this.broadcast({ type: 'session.created', payload: { state: h.state } });
+    });
     manager.on('event', (h, ev) => {
       this.db.upsertSession({ id: h.id, claudeSessionId: h.state.claudeSessionId, cwd: h.state.cwd, label: h.state.title, status: h.state.status, effort: h.state.effort, worktreeOrigin: h.state.worktreeOrigin, worktreeBranch: h.state.worktreeBranch });
       const s = h.state;
