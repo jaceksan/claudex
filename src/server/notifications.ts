@@ -65,18 +65,11 @@ export class NotificationEngine extends EventEmitter {
       return;
     }
 
-    if (event.type === 'user') {
-      const content = Array.isArray(event.message.content) ? event.message.content : [];
-      for (const block of content) {
-        if (typeof block === 'object' && block.type === 'tool_result' && block.is_error) {
-          this.emit('notification', {
-            sessionId, timestamp: ts, kind: 'tool-error',
-            title: `Tool error · ${name}`, body: String(block.content).slice(0, 200),
-          } satisfies Notification);
-          return;
-        }
-      }
-    }
+    // Tool errors (Path does not exist, Exit code 2, etc.) are almost always
+    // speculative-call failures that Claude self-corrects on the next turn. Firing
+    // an OS notification for every one of those is pure noise, and the muted
+    // collapsible in the event feed is the right place for them. Session crashes
+    // still fire via the 'result' branch above with title "Session crashed".
 
     if (event.type === 'assistant') {
       for (const block of event.message.content) {

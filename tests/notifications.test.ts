@@ -12,7 +12,7 @@ describe('NotificationEngine', () => {
     expect(out[0].kind).toBe('session-ended');
   });
 
-  it('fires on tool error', () => {
+  it('does NOT fire on tool errors (speculative-call failures are noise)', () => {
     const engine = new NotificationEngine();
     const out: Notification[] = [];
     engine.on('notification', (n) => out.push(n));
@@ -24,7 +24,7 @@ describe('NotificationEngine', () => {
       },
     };
     engine.handle({ sessionId: 's1', title: null }, ev);
-    expect(out[0].kind).toBe('tool-error');
+    expect(out).toHaveLength(0);
   });
 
   it('fires on ExitPlanMode tool_use', () => {
