@@ -280,6 +280,16 @@ export class WsHub {
           });
           break;
         }
+        case 'client.topic.delete': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          td.topicManager.deleteTopic(env.payload.topicId).then(() => {
+            this.broadcast(buildTopicState(td));
+          }).catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'delete' } });
+          });
+          break;
+        }
         case 'client.topic.list': {
           const td = this.topicDeps;
           if (!td) return this.sendError(ws, 'topic support not initialised');

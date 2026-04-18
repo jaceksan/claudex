@@ -66,6 +66,9 @@ export class TopicStore {
     const info = this.db.prepare('UPDATE topic SET watch_ci=? WHERE id=?').run(enabled ? 1 : 0, id);
     if (info.changes === 0) throw new Error(`topic ${id} not found`);
   }
+  delete(id: string): void {
+    this.db.prepare('DELETE FROM topic WHERE id=?').run(id);
+  }
   private hydrate(r: Record<string, unknown>): Topic {
     return {
       id: r.id as string, repoId: r.repo_id as string,

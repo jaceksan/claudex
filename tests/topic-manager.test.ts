@@ -143,6 +143,46 @@ describe('TopicManager.create', () => {
   it('acceptAttempt throws on missing session', async () => {
     await expect(mgr.acceptAttempt('sess_nope')).rejects.toThrow(/not found/);
   });
+
+  it('deleteTopic cascades: kills sessions, drops branch, removes topic + task rows', async () => {
+    const repo = repos.register({
+      path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin',
+      defaultBranch: 'main',
+    });
+    const killed: string[] = [];
+    mgr = new TopicManager({
+      db, repos, topics, tasks,
+      git: async (args, cwd) => { gitCalls.push({ args, cwd }); return ''; },
+      createWorktree: (cwd, id, opts) => ({ path: `/tmp/wt/${id}`, origin: cwd, branch: opts.branch }),
+      spawnSession: async ({ cwd, label }) => {
+        const id = `sess_${Math.random().toString(36).slice(2, 8)}`;
+        db.prepare("INSERT INTO sessions (id, cwd, label, status, created_at, last_event_at) VALUES (?,?,?,'running',?,?)")
+          .run(id, cwd, label ?? null, Date.now(), Date.now());
+        return { id };
+      },
+      deleteSession: (id) => { killed.push(id); },
+      now: () => 1700000000000,
+      githubLogin: async () => 'jaceksan',
+    });
+    const { topic } = await mgr.create({
+      repoId: repo.id, template: 'standard',
+      title: 'to be deleted', ticketKey: 'DEL-1',
+    });
+    const t1 = await mgr.addAttempt(topic.id, { effort: 'medium', permissionMode: 'acceptEdits' });
+    const t2 = await mgr.addAttempt(topic.id, { effort: 'medium', permissionMode: 'acceptEdits' });
+
+    gitCalls.length = 0;
+    await mgr.deleteTopic(topic.id);
+
+    expect(killed).toEqual(expect.arrayContaining([t1.sessionId, t2.sessionId]));
+    expect(gitCalls.some((c) => c.args[0] === 'branch' && c.args[1] === '-D')).toBe(true);
+    expect(topics.getById(topic.id)).toBeNull();
+    expect(tasks.listByTopic(topic.id)).toHaveLength(0);
+  });
+
+  it('deleteTopic throws when topic is missing', async () => {
+    await expect(mgr.deleteTopic('topic_missing')).rejects.toThrow(/not found/);
+  });
 });
 
 describe('TopicManager.addFixTask', () => {

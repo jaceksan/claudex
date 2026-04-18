@@ -21,6 +21,7 @@ export interface TopicManagerDeps {
   git: Git;
   createWorktree: CreateWt;
   spawnSession: (args: { cwd: string; label: string; prompt?: string; effort: string; permissionMode: string }) => Promise<SpawnedSession>;
+  deleteSession?: (sessionId: string) => void;
   now: () => number;
   githubLogin: () => Promise<string>;
   prLifecycle?: OnFixAccepted;
@@ -192,5 +193,34 @@ export class TopicManager {
       throw new Error('not a fix task');
     }
     this.d.tasks.markDiscarded(sessionId);
+  }
+
+  async deleteTopic(topicId: string) {
+    const topic = this.d.topics.getById(topicId);
+    if (!topic) throw new Error(`topic ${topicId} not found`);
+    const repo = this.d.repos.getById(topic.repoId);
+
+    // Kill every session attached to this topic (handles in-memory + persisted rows).
+    // sessionManager.delete emits 'deleted', which the hub uses to cascade-delete the
+    // session row via FK, which in turn cascades task rows. For sessions the manager
+    // doesn't know about, fall back to raw DB delete.
+    const siblingTasks = this.d.tasks.listByTopic(topicId);
+    for (const t of siblingTasks) {
+      if (this.d.deleteSession) {
+        try { this.d.deleteSession(t.sessionId); } catch { /* best-effort */ }
+      }
+      // Raw cleanup in case deleteSession wasn't wired or the row is detached.
+      this.d.db.prepare('DELETE FROM sessions WHERE id=?').run(t.sessionId);
+    }
+
+    // Belt-and-braces: task rows should be gone via cascade, but confirm.
+    this.d.db.prepare('DELETE FROM task WHERE topic_id=?').run(topicId);
+
+    // Drop the topic branch — best-effort, ignore if it was never created or already gone.
+    if (repo && topic.topicBranch) {
+      try { await this.d.git(['branch', '-D', topic.topicBranch], repo.path); } catch { /* ignore */ }
+    }
+
+    this.d.topics.delete(topicId);
   }
 }

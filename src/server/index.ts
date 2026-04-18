@@ -63,6 +63,7 @@ const topicManager = new TopicManager({
     const s = manager.create({ cwd, label: label ?? undefined, prompt, effort: effort as Parameters<typeof manager.create>[0]['effort'], permissionMode });
     return { id: s.id };
   },
+  deleteSession: (sessionId) => manager.delete(sessionId),
   now: () => Date.now(),
   githubLogin: async () => getOrFetchGithubLogin(db.underlying(), new GitHubAdapter()),
 });

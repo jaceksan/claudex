@@ -11,6 +11,7 @@ export type TopicClientMessage =
   | { type: 'client.topic.accept'; payload: { sessionId: string } }
   | { type: 'client.topic.discard'; payload: { sessionId: string } }
   | { type: 'client.topic.list'; payload: { repoId?: string } }
+  | { type: 'client.topic.delete'; payload: { topicId: string } }
   | { type: 'client.topic.subscribe'; payload: { topicId: string } }
   | { type: 'client.topic.unsubscribe'; payload: { topicId: string } }
   | { type: 'client.topic.acceptTask'; payload: { sessionId: string } }
