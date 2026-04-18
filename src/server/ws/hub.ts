@@ -253,9 +253,13 @@ export class WsHub {
           const td = this.topicDeps;
           if (!td) return this.sendError(ws, 'topic support not initialised');
           const { topicId, ...attemptArgs } = env.payload;
-          td.topicManager.addAttempt(topicId, attemptArgs).then(() => {
+          td.topicManager.addAttempt(topicId, attemptArgs).then(async () => {
             this.broadcast(buildTopicState(td));
+            try {
+              this.broadcast(await buildTopicDetail(topicId, td));
+            } catch { /* best-effort */ }
           }).catch((e: Error) => {
+            console.error('[addAttempt]', e);
             this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'addAttempt' } });
           });
           break;

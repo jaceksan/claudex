@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { send, getConnectionState } from '../lib/ws';
+import { useEffect, useState } from 'react';
+import { send, subscribe, getConnectionState } from '../lib/ws';
 
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 const MODES = ['default', 'plan', 'acceptEdits', 'bypassPermissions'] as const;
@@ -11,12 +11,26 @@ export function AddTaskModal({ topicId, onClose }: { topicId: string; onClose: (
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!submitting) return;
+    return subscribe((m) => {
+      if (m.type === 'server.topic.error' && m.payload.ctx === 'addAttempt') {
+        setError(m.payload.message);
+        setSubmitting(false);
+      } else if (m.type === 'server.topic.detail' && m.payload.topicId === topicId) {
+        // New task landed on the topic detail — our submit succeeded.
+        onClose();
+      }
+    });
+  }, [submitting, topicId, onClose]);
+
   function submit() {
     if (submitting) return;
     if (getConnectionState() !== 'open') {
       setError('Not connected to the claudex server. Start it and try again.');
       return;
     }
+    setError(null);
     setSubmitting(true);
     send({
       type: 'client.topic.addAttempt',
@@ -27,7 +41,6 @@ export function AddTaskModal({ topicId, onClose }: { topicId: string; onClose: (
         label: title.trim() || undefined,
       },
     });
-    onClose();
   }
 
   return (
@@ -68,7 +81,7 @@ export function AddTaskModal({ topicId, onClose }: { topicId: string; onClose: (
 
         <div className="mt-4 flex justify-end gap-2">
           <button onClick={onClose} className="rounded px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800">Cancel</button>
-          <button onClick={submit} disabled={submitting} className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40">Start task</button>
+          <button onClick={submit} disabled={submitting} className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40">{submitting ? 'Starting…' : 'Start task'}</button>
         </div>
       </div>
     </div>
