@@ -1,0 +1,39 @@
+tests/topic-manager.test.ts
+  7a240c56656ec247 34,39,47,50,52,58,67,76-78,88,92,118,122,133,137,143-144,181-182,186,240,244,293,298,346,350,399,401,403,420,422,424
+tests/integration-topic.test.ts
+  7a240c56656ec247 31,36
+src/server/ws/topic-envelope.ts
+  7a240c56656ec247 29
+src/web/components/new-topic-modal.tsx
+  7a240c56656ec247 2,40,55-59,64
+src/server/ws/hub.ts
+  7a240c56656ec247 241,243-245
+src/web/components/add-attempt-modal.tsx
+  7a240c56656ec247 1-60
+README.md
+  7a240c56656ec247 16
+src/web/pages/topic.tsx
+  7a240c56656ec247 1,11,16,53,102-104
+src/server/topic-manager.ts
+  7a240c56656ec247 51,68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "d777b749ea50e4025712b69b50682886c83ed957",
+  "prompts": {
+    "7a240c56656ec247": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28cd815a-90e4-4f16-b2c1-5aacb321a562",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 118,
+      "total_deletions": 121,
+      "accepted_lines": 1418,
+      "overriden_lines": 0
+    }
+  }
+}
