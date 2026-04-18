@@ -20,6 +20,9 @@ import { TaskStore } from './task.js';
 import { createWorktree, resolveGitRoot } from './worktree.js';
 import { getOrFetchGithubLogin } from './identity.js';
 import { GitHubAdapter } from './vcs/github.js';
+import { PrLifecycle } from './pr-lifecycle.js';
+import { PrCache } from './pr-cache.js';
+import { onSessionEnded } from './quick-fix-auto.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 7878);
@@ -64,7 +67,28 @@ const topicManager = new TopicManager({
   githubLogin: async () => getOrFetchGithubLogin(db.underlying(), new GitHubAdapter()),
 });
 
+const ghAdapter = new GitHubAdapter();
+const prCache = new PrCache(ghAdapter);
+const prLifecycle = new PrLifecycle({
+  repos,
+  topics,
+  adapter: () => ghAdapter,
+  prCache,
+  git: async (args, cwd) => execFileP('git', args, { cwd: cwd ?? process.cwd() }).then((r) => r.stdout),
+  topicManager,
+});
+
 const hub = new WsHub(manager, notifications, db, transcripts, { topicManager, repos, topics, tasks, rawDb: db.underlying() });
+
+// Auto-accept + auto-PR for quick-fix topics on session success.
+manager.on('ended', (h) => {
+  onSessionEnded(h.id, h.state.status, {
+    tasks,
+    topics,
+    acceptAttempt: (sid) => topicManager.acceptAttempt(sid),
+    createPR: (topicId, args) => prLifecycle.createPR(topicId, args),
+  }).catch((e) => console.error('[quick-fix-auto] unexpected error', e));
+});
 
 // Hydrate detached sessions from SQLite so they appear in the dashboard
 for (const row of db.listSessions()) {
