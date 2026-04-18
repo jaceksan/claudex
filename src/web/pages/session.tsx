@@ -162,16 +162,20 @@ export default function SessionPage({ id }: { id: string }) {
           </button>
         )}
       </div>
-      {/* Row 2 — location: cwd + worktree branch */}
+      {/* Row 2 — location + git status.
+          Branch is owned by GitBadge; don't repeat it here.
+          For worktree sessions, show "worktree · <origin-basename>" (full path on hover)
+          instead of the long ~/.claudex/worktrees/<uuid> path, which is just noise. */}
       <div className="flex flex-wrap items-center gap-2 min-w-0 text-xs">
-        <span className="font-mono text-zinc-400 truncate max-w-xl" title={state.cwd}>{state.cwd}</span>
-        {state.worktreeBranch && (
+        {state.worktreeOrigin ? (
           <span
-            className="rounded bg-emerald-900/40 px-1.5 py-0.5 font-mono text-[11px] text-emerald-300 ring-1 ring-inset ring-emerald-700/60"
-            title={`worktree off ${state.worktreeOrigin}`}
+            className="rounded bg-emerald-900/30 px-1.5 py-0.5 text-[11px] text-emerald-300 ring-1 ring-inset ring-emerald-700/50"
+            title={`worktree at ${state.cwd}\noff ${state.worktreeOrigin}`}
           >
-            🌿 {state.worktreeBranch}
+            🌿 worktree · {state.worktreeOrigin.split('/').pop()}
           </span>
+        ) : (
+          <span className="font-mono text-zinc-400 truncate max-w-xl" title={state.cwd}>{state.cwd}</span>
         )}
         {git?.isRepo && <GitBadge info={git} />}
       </div>
