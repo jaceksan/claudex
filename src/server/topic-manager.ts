@@ -151,6 +151,18 @@ export class TopicManager {
     if (task.type !== 'attempt') throw new Error('not an attempt task');
     const topic = this.d.topics.getById(task.topicId)!;
     const repo = this.d.repos.getById(topic.repoId)!;
+
+    // Precheck: an attempt branch with no commits beyond the topic branch has nothing
+    // to merge. Fail early with a clear message instead of letting `git commit` throw
+    // "nothing to commit" deep in the pipeline.
+    const ahead = (await this.d.git(
+      ['rev-list', '--count', `${topic.topicBranch!}..${task.childBranch!}`],
+      repo.path,
+    )).trim();
+    if (ahead === '0') {
+      throw new Error('This task has no commits yet — nothing to accept. Ask Claude to commit its changes first, or Discard the task.');
+    }
+
     await this.d.git(['checkout', topic.topicBranch!], repo.path);
     await this.d.git(['merge', '--squash', task.childBranch!], repo.path);
     const msg = `${topic.ticketKey ? topic.ticketKey + ': ' : ''}${topic.title}`;

@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { useTopicDetail } from '../hooks/use-topic-detail';
-import { send } from '../lib/ws';
+import { send, subscribe } from '../lib/ws';
 import { TopicHeader } from '../components/topic-header';
 import { Timeline } from '../components/timeline';
 import { TaskPanel } from '../components/task-panel';
@@ -14,6 +14,18 @@ export default function TopicPage({ id }: { id: string }) {
   const detail = useTopicDetail(id);
   const [, navigate] = useLocation();
   const [showAddAttempt, setShowAddAttempt] = useState(false);
+  const [error, setError] = useState<{ ctx: string; message: string } | null>(null);
+
+  useEffect(() => {
+    return subscribe((m) => {
+      if (m.type === 'server.topic.error') {
+        setError({ ctx: m.payload.ctx ?? 'action', message: m.payload.message });
+      } else if (m.type === 'server.topic.detail' && m.payload.topicId === id) {
+        // Fresh detail arrived → stale error probably no longer relevant.
+        setError(null);
+      }
+    });
+  }, [id]);
 
   if (!detail) {
     return (
@@ -56,6 +68,12 @@ export default function TopicPage({ id }: { id: string }) {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <TopicHeader topic={topic} pr={pr} onBack={() => navigate('/')} />
+      {error && (
+        <div className="flex items-start justify-between gap-3 border-b border-red-500/40 bg-red-950/30 px-6 py-2 text-sm text-red-200">
+          <div><span className="text-xs uppercase tracking-wide text-red-300/80">{error.ctx}</span> · {error.message}</div>
+          <button type="button" onClick={() => setError(null)} className="shrink-0 rounded px-2 py-0.5 text-xs text-red-300 hover:bg-red-900/40">dismiss</button>
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-7xl p-4">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
