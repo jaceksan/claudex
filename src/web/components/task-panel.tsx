@@ -4,9 +4,9 @@ type TopicMeta = TopicDetailBundle['topic'];
 
 function taskTypeLabel(type: string): string {
   switch (type) {
-    case 'attempt': return 'Attempt';
-    case 'fix-comments': return 'Fix comments';
-    case 'fix-ci': return 'Fix CI';
+    case 'attempt': return 'Task';
+    case 'fix-comments': return 'Fix: comments';
+    case 'fix-ci': return 'Fix: CI';
     case 'rebase': return 'Rebase';
     case 'free': return 'Free';
     default: return type;
@@ -87,7 +87,7 @@ export function TaskPanel({
       {topic.phase !== 'Merged' && topic.phase !== 'Closed' && (
         <div className="mt-3 text-xs text-zinc-600">
           {topic.phase === 'Draft' && !topic.acceptedAttemptId
-            ? '+ New attempt from the Action bar below'
+            ? '+ New task from the Action bar below'
             : '+ New fix task from the Action bar below'}
         </div>
       )}

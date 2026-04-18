@@ -8,7 +8,7 @@ import { TaskPanel } from '../components/task-panel';
 import { CommentsPanel } from '../components/comments-panel';
 import { CiPanel } from '../components/ci-panel';
 import { ActionBar } from '../components/action-bar';
-import { AddAttemptModal } from '../components/add-attempt-modal';
+import { AddTaskModal } from '../components/add-task-modal';
 
 export default function TopicPage({ id }: { id: string }) {
   const detail = useTopicDetail(id);
@@ -100,7 +100,7 @@ export default function TopicPage({ id }: { id: string }) {
         onAddAttempt={handleAddAttempt}
       />
       {showAddAttempt && (
-        <AddAttemptModal topicId={id} onClose={() => setShowAddAttempt(false)} />
+        <AddTaskModal topicId={id} onClose={() => setShowAddAttempt(false)} />
       )}
     </div>
   );

@@ -48,7 +48,7 @@ function visibleActions(
     return {
       createPr: true,
       createPrDisabledReason: !hasAcceptedAttempt
-        ? 'Accept an attempt first'
+        ? 'Accept a task first'
         : hasRunningTask
         ? 'Wait for running task'
         : undefined,
@@ -165,7 +165,7 @@ export function ActionBar({
           onClick={onAddAttempt}
           className="rounded border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
         >
-          + New attempt
+          + New task
         </button>
       )}
 

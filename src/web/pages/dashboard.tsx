@@ -13,7 +13,7 @@ export default function DashboardPage() {
   function handleDelete(topicId: string) {
     const topic = topics.find((t) => t.id === topicId);
     const label = topic ? `"${topic.title}"` : 'this topic';
-    if (!confirm(`Delete ${label} and all its attempts? This kills running sessions, removes worktrees, and drops the topic branch.`)) return;
+    if (!confirm(`Delete ${label} and all its tasks? This kills running sessions, removes worktrees, and drops the topic branch.`)) return;
     send({ type: 'client.topic.delete', payload: { topicId } });
   }
 

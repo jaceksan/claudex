@@ -28,7 +28,7 @@ function buildSteps(topic: TopicMeta, tasks: TaskRow[], pr: PR | undefined): Ste
   }
 
   const draftDone = phase !== 'Draft' || (phase === 'Draft' && !!topic.acceptedAttemptId);
-  const draftSubLabel = `${attempts.length} attempt${attempts.length !== 1 ? 's' : ''}${accepted.length ? `, ${accepted.length} accepted` : ''}`;
+  const draftSubLabel = `${attempts.length} task${attempts.length !== 1 ? 's' : ''}${accepted.length ? `, ${accepted.length} accepted` : ''}`;
   steps.push({
     label: 'Draft',
     sublabel: draftSubLabel,

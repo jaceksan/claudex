@@ -13,8 +13,8 @@ It's a thin, local wrapper around the official CLI: no API re-implementation, no
 - **One pane, many agents.** Live dashboard with status, current tool, cost, token usage, parse errors and git state per session.
 - **Rich session view.** Markdown with syntax highlighting, side-by-side diffs for `Edit`, file previews for `Write`, plan cards for `ExitPlanMode`, collapsible tool calls and results, streaming as it happens.
 - **Git worktree isolation.** Tick one checkbox in the launcher and claudex cuts a fresh branch off HEAD in a throwaway worktree under `~/.claudex/worktrees/` — safe to run many sessions on the same repo in parallel. Branch name and origin are shown on the dashboard card and session header; worktrees are garbage-collected when the session is deleted.
-- **Topic dashboard.** Sessions are grouped into topics — one card per work item, sorted by activity. Create topics from the "+ New topic" modal: pick a template (Quick fix / Standard / Exploration), select a repo, set a title, optional ticket key. Creating a topic cuts the branch but does not spawn any session; click into the topic and press "+ New attempt" to start work with your chosen prompt, effort, and permission mode. Delete a topic from its card (×) to kill every attached session, remove their worktrees, and drop the topic branch in one shot.
-- **Topic detail page.** Three-column layout: timeline stepper (Draft → PR opened → Under review → Merge), task list with per-task Accept/Discard, review-comment cards with per-thread Fix and inline reply, CI check panel with rollup badge and per-check Fix. Sticky action bar gates buttons by phase — Create PR (Draft, accepted attempt), Address feedback (Open, unresolved comments or failing CI), Merge (Open, all-green + approvals).
+- **Topic dashboard.** Sessions are grouped into topics — one card per work item, sorted by activity. Create topics from the "+ New topic" modal: pick a template (Quick fix / Standard / Exploration), select a repo, set a title, optional ticket key. Creating a topic cuts the branch but does not spawn any session; click into the topic and press "+ New task" to start work with an optional title, effort, and permission mode — type the first prompt to the session once it opens. Delete a topic from its card (×) to kill every attached session, remove their worktrees, and drop the topic branch in one shot.
+- **Topic detail page.** Three-column layout: timeline stepper (Draft → PR opened → Under review → Merge), task list with per-task Accept/Discard, review-comment cards with per-thread Fix and inline reply, CI check panel with rollup badge and per-check Fix. Sticky action bar gates buttons by phase — Create PR (Draft, accepted task), Address feedback (Open, unresolved comments or failing CI), Merge (Open, all-green + approvals).
 - **PR lifecycle buttons.** Create PR (pushes branch, opens GitHub PR, auto-enables CI watch), Address feedback (spawns fix task seeded with thread body + CI log tail), per-comment Fix, per-check Fix.
 - **Watch CI.** Toggle per-topic; polls checks every 2 minutes and fires an OS notification on rollup state transitions (running → ok, running → failed, etc.).
 - **Reset.** Wipe a session's context and start a fresh subprocess in place — same card, same cwd, blank slate — without losing the dashboard slot.
@@ -55,7 +55,7 @@ Then open http://localhost:5173. Backend runs on `:7878`; Vite proxies `/api` an
 
 ## Roadmap
 
-- **Quick-fix auto-pilot.** When an attempt on a Quick-fix topic ends cleanly, claudex auto-accepts the attempt and auto-opens the PR — no manual steps.
+- **Quick-fix auto-pilot.** When a task on a Quick-fix topic ends cleanly, claudex auto-accepts it and auto-opens the PR — no manual steps.
 - **Merge.** Real merge action (gh/glab `mergePR` call) — Plan 4.
 - **Conflict resolution with AI narrative review.** Sync with main; on conflicts spawn a rebase task that reports a short summary + explicit uncertainties, letting a non-tech user accept/reject without reading diffs.
 - **Flaky CI triage & auto-restart.** Distinguish infrastructure flakes from real failures; rerun flakies rather than "fixing" them.
@@ -70,7 +70,7 @@ Then open http://localhost:5173. Backend runs on `:7878`; Vite proxies `/api` an
 
 - Localhost only; no auth. Don't expose the port.
 - Single-user — assumes one human driving from one browser.
-- Broadcast (parallel prompt dispatch across unrelated sessions) was removed; parallel work now happens within a topic via multiple attempts, landing fully in the next plan.
+- Broadcast (parallel prompt dispatch across unrelated sessions) was removed; parallel work now happens within a topic via multiple tasks, landing fully in the next plan.
 
 ## Architecture
 
