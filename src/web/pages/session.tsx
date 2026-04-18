@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { send, subscribe } from '../lib/ws';
 import { useConnection, useSessionList } from '../hooks/use-ws';
+import { useSessionSiblings } from '../hooks/use-session-siblings';
 import type { ServerEnvelope } from '../../server/ws/envelope';
 import type { SessionState } from '../../server/session/state';
 import type { StreamEvent } from '../../server/stream-json/types';
@@ -63,7 +64,17 @@ export default function SessionPage({ id }: { id: string }) {
   const [state, setState] = useState<SessionState | null>(null);
   const [events, setEvents] = useState<StreamEvent[]>([]);
   const [streaming, setStreaming] = useState<string>('');
-  const sessions = useSessionList();
+  const allSessions = useSessionList();
+  const siblingsData = useSessionSiblings(id);
+  const sessions = siblingsData
+    ? siblingsData.siblings.map((s) => ({
+        sessionId: s.sessionId,
+        title: s.title ?? s.label,
+        cwd: s.cwd,
+        status: s.status,
+        lastActivityAt: s.lastActivityAt,
+      }))
+    : allSessions.filter((s) => s.sessionId === id);
   const conn = useConnection();
   const [, navigate] = useLocation();
   const scrollRef = useRef<HTMLDivElement>(null);

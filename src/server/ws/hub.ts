@@ -296,6 +296,36 @@ export class WsHub {
           this.send(ws, { type: 'server.repo.state', payload: { repos } });
           break;
         }
+        case 'client.session.siblings': {
+          const td = this.topicDeps;
+          if (!td) {
+            this.send(ws, { type: 'server.session.siblings', payload: { sessionId: env.payload.sessionId, topicId: null, siblings: [] } });
+            break;
+          }
+          const task = td.tasks.getBySession(env.payload.sessionId);
+          if (!task) {
+            this.send(ws, { type: 'server.session.siblings', payload: { sessionId: env.payload.sessionId, topicId: null, siblings: [] } });
+            break;
+          }
+          const siblingTasks = td.tasks.listByTopic(task.topicId);
+          const siblings = siblingTasks.map((t) => {
+            const row = td.rawDb.prepare('SELECT status, title, cwd, last_event_at FROM sessions WHERE id=?').get(t.sessionId) as { status?: string; title?: string | null; cwd?: string; last_event_at?: number } | undefined;
+            return {
+              sessionId: t.sessionId,
+              topicId: t.topicId,
+              type: t.type,
+              label: t.label,
+              title: row?.title ?? null,
+              cwd: row?.cwd ?? '',
+              status: row?.status ?? 'ended',
+              lastActivityAt: row?.last_event_at ?? 0,
+              acceptedAt: t.acceptedAt,
+              discardedAt: t.discardedAt,
+            };
+          });
+          this.send(ws, { type: 'server.session.siblings', payload: { sessionId: env.payload.sessionId, topicId: task.topicId, siblings } });
+          break;
+        }
         case 'client.resume': {
           const uiId = env.payload.sessionId;
           const existing = this.manager.get(uiId);

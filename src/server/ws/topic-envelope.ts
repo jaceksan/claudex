@@ -22,14 +22,29 @@ export type TopicClientMessage =
   | { type: 'client.pr.fixComment'; payload: { topicId: string; threadId: string } }
   | { type: 'client.pr.fixCheck'; payload: { topicId: string; checkName: string } }
   | { type: 'client.pr.watch'; payload: { topicId: string; enable: boolean } }
-  | { type: 'client.thread.reply'; payload: { topicId: string; threadId: string; body: string } };
+  | { type: 'client.thread.reply'; payload: { topicId: string; threadId: string; body: string } }
+  | { type: 'client.session.siblings'; payload: { sessionId: string } };
 
 export type TopicServerMessage =
   | { type: 'server.topic.state'; payload: { topics: TopicCard[] } }
   | { type: 'server.topic.created'; payload: { topicId: string; sessionId: string } }
   | { type: 'server.topic.error'; payload: { message: string; ctx?: string } }
   | { type: 'server.repo.state'; payload: { repos: RepoRow[] } }
-  | { type: 'server.topic.detail'; payload: TopicDetailBundle };
+  | { type: 'server.topic.detail'; payload: TopicDetailBundle }
+  | { type: 'server.session.siblings'; payload: { sessionId: string; topicId: string | null; siblings: SiblingRow[] } };
+
+export interface SiblingRow {
+  sessionId: string;
+  topicId: string;
+  type: string;
+  label: string | null;
+  title: string | null;
+  cwd: string;
+  status: string;
+  lastActivityAt: number;
+  acceptedAt: number | null;
+  discardedAt: number | null;
+}
 
 export interface TopicCard {
   id: string;
