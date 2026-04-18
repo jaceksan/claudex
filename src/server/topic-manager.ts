@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readdirSync } from 'node:fs';
 import type Database from 'better-sqlite3';
 import type { RepoStore } from './repo.js';
 import type { TopicStore, TopicTemplate } from './topic.js';
@@ -116,7 +117,10 @@ export class TopicManager {
       cwd: wt.path, label: args.label ?? `attempt-${nStr}`,
       prompt: args.prompt, effort: args.effort, permissionMode: args.permissionMode,
       presetUiId, worktree: wt,
-      appendSystemPrompt: orientationHint({ cwd: wt.path, branch: attemptBranch, base: topic.topicBranch! }),
+      appendSystemPrompt: orientationHint({
+        cwd: wt.path, branch: attemptBranch, base: topic.topicBranch!,
+        topicTitle: topic.title, taskLabel: args.label ?? `attempt-${nStr}`,
+      }),
     });
     return this.d.tasks.create({
       sessionId: session.id, topicId, type: 'attempt',
@@ -183,7 +187,10 @@ export class TopicManager {
       effort: args.effort,
       permissionMode: args.permissionMode,
       presetUiId, worktree: wt,
-      appendSystemPrompt: orientationHint({ cwd: wt.path, branch: childBranch, base: topic.topicBranch! }),
+      appendSystemPrompt: orientationHint({
+        cwd: wt.path, branch: childBranch, base: topic.topicBranch!,
+        topicTitle: topic.title, taskLabel: args.label ?? args.type,
+      }),
     });
     return this.d.tasks.create({
       sessionId: session.id, topicId, type: args.type,
@@ -262,6 +269,31 @@ export class TopicManager {
   }
 }
 
-function orientationHint(args: { cwd: string; branch: string; base: string }): string {
-  return `You are in a fresh git worktree at ${args.cwd}, on branch ${args.branch} cut from ${args.base}. The working tree mirrors that base branch, so file/directory layout may differ from other branches you've seen in this repo. Run \`git status\` and \`ls\` or \`tree -L 2\` to orient before assuming paths.`;
+function orientationHint(args: {
+  cwd: string;
+  branch: string;
+  base: string;
+  topicTitle?: string;
+  taskLabel?: string | null;
+}): string {
+  let listing = '';
+  try {
+    const entries = readdirSync(args.cwd, { withFileTypes: true })
+      .filter((e) => !e.name.startsWith('.'))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((e) => (e.isDirectory() ? `${e.name}/` : e.name));
+    if (entries.length > 0) listing = entries.join(' ');
+  } catch { /* best-effort */ }
+
+  const parts = [
+    `You are in a fresh git worktree at ${args.cwd}, on branch ${args.branch} cut from ${args.base}.`,
+  ];
+  if (args.topicTitle) {
+    parts.push(`Topic: ${args.topicTitle}${args.taskLabel ? ` — task: ${args.taskLabel}` : ''}.`);
+  }
+  if (listing) {
+    parts.push(`Top-level of the working tree (at spawn time): ${listing}.`);
+  }
+  parts.push(`The working tree mirrors that base branch, so directory layout may differ from what you've seen on other branches. Always verify paths with \`ls\` / \`git status\` before assuming anything.`);
+  return parts.join(' ');
 }
