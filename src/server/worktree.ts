@@ -27,17 +27,30 @@ export function resolveGitRoot(cwd: string): string | null {
   catch { return null; }
 }
 
+/** Sanitise a string for use as a directory name — strip slashes and other shell-hostile chars. */
+export function safeDirName(input: string): string {
+  return input.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 100);
+}
+
 export function createWorktree(
   sourceCwd: string,
   uiId: string,
-  opts: { branch: string; base?: string },
+  opts: { branch: string; base?: string; dirName?: string },
 ): WorktreeInfo {
   const origin = resolveGitRoot(sourceCwd);
   if (!origin) {
     throw new Error(`Worktree requested but ${sourceCwd} is not inside a git repository.`);
   }
-  const { branch, base } = opts;
-  const wtPath = path.join(worktreeRoot(), uiId);
+  const { branch, base, dirName } = opts;
+  // Prefer a human-readable dir name when callers provide one; fall back to uiId so
+  // the launcher "useWorktree" flow (which has no semantic name) still works.
+  const slot = dirName ? safeDirName(dirName) : uiId;
+  // If two callers happen to generate the same dirName for different uiIds (e.g. the
+  // same branch name retried), suffix with a short uiId fragment for uniqueness.
+  let wtPath = path.join(worktreeRoot(), slot);
+  if (dirName && existsSync(wtPath)) {
+    wtPath = path.join(worktreeRoot(), `${slot}-${uiId.slice(0, 6)}`);
+  }
   if (existsSync(wtPath)) {
     // Cleanup a stale path left over from a crashed prior session under the same id.
     try { rmSync(wtPath, { recursive: true, force: true }); } catch { /* ignore */ }

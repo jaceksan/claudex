@@ -9,7 +9,7 @@ import { slugify } from './slug.js';
 
 export interface SpawnedSession { id: string; }
 export type Git = (args: string[], cwd?: string) => Promise<string>;
-export type CreateWt = (cwd: string, uiId: string, opts: { branch: string; base?: string }) => { path: string; origin: string; branch: string };
+export type CreateWt = (cwd: string, uiId: string, opts: { branch: string; base?: string; dirName?: string }) => { path: string; origin: string; branch: string };
 
 export interface OnFixAccepted {
   onFixAccepted(topic: import('./topic.js').Topic, task: import('./task.js').Task, commitSha: string): Promise<void>;
@@ -112,7 +112,12 @@ export class TopicManager {
     // Create the worktree BEFORE spawning so the Claude subprocess's cwd is the worktree,
     // not the source repo. Pre-generate the uiId so the worktree dir name matches the session.
     const presetUiId = randomUUID();
-    const wt = this.d.createWorktree(repo.path, presetUiId, { branch: attemptBranch, base: topic.topicBranch! });
+    const repoBase = repo.path.split('/').pop() ?? 'repo';
+    const wt = this.d.createWorktree(repo.path, presetUiId, {
+      branch: attemptBranch,
+      base: topic.topicBranch!,
+      dirName: `${repoBase}__${topic.slug}-${nStr}`,
+    });
     const session = await this.d.spawnSession({
       cwd: wt.path, label: args.label ?? `attempt-${nStr}`,
       prompt: args.prompt, effort: args.effort, permissionMode: args.permissionMode,
@@ -179,7 +184,12 @@ export class TopicManager {
     // Worktree first, spawn inside it.
     const presetUiId = randomUUID();
     const childBranch = `${topic.topicBranch}__fix-${presetUiId.slice(0, 6)}`;
-    const wt = this.d.createWorktree(repo.path, presetUiId, { branch: childBranch, base: topic.topicBranch! });
+    const repoBase = repo.path.split('/').pop() ?? 'repo';
+    const wt = this.d.createWorktree(repo.path, presetUiId, {
+      branch: childBranch,
+      base: topic.topicBranch!,
+      dirName: `${repoBase}__${topic.slug}-fix-${presetUiId.slice(0, 6)}`,
+    });
     const session = await this.d.spawnSession({
       cwd: wt.path,
       label: args.label ?? args.type,
