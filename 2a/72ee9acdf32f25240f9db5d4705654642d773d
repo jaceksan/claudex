@@ -1,0 +1,29 @@
+src/server/topic-manager.ts
+  7a240c56656ec247 32,119,186,264-267
+src/server/session/process.ts
+  7a240c56656ec247 15,116
+src/server/session/manager.ts
+  7a240c56656ec247 35,80
+src/server/index.ts
+  7a240c56656ec247 63,70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "2a72ee9acdf32f25240f9db5d4705654642d773d",
+  "prompts": {
+    "7a240c56656ec247": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28cd815a-90e4-4f16-b2c1-5aacb321a562",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 18,
+      "total_deletions": 6,
+      "accepted_lines": 379,
+      "overriden_lines": 0
+    }
+  }
+}
