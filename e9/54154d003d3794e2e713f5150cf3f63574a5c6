@@ -1,0 +1,29 @@
+src/web/pages/session.tsx
+  7a240c56656ec247 8,67-77
+src/server/ws/topic-envelope.ts
+  7a240c56656ec247 25-26,33-47
+src/server/ws/hub.ts
+  7a240c56656ec247 299-328
+src/web/hooks/use-session-siblings.ts
+  7a240c56656ec247 1-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "e954154d003d3794e2e713f5150cf3f63574a5c6",
+  "prompts": {
+    "7a240c56656ec247": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28cd815a-90e4-4f16-b2c1-5aacb321a562",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 78,
+      "total_deletions": 3,
+      "accepted_lines": 463,
+      "overriden_lines": 0
+    }
+  }
+}
