@@ -1,0 +1,28 @@
+src/server/index.ts
+  fc742e1a06a3e927 92
+  7a240c56656ec247 23-25,70-80,83-91
+tests/quick-fix-auto.test.ts
+  7a240c56656ec247 1-155
+src/server/quick-fix-auto.ts
+  7a240c56656ec247 1-56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "81670d2584d3066af69aee471f6268914f1b475d",
+  "prompts": {
+    "7a240c56656ec247": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28cd815a-90e4-4f16-b2c1-5aacb321a562",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 237,
+      "total_deletions": 2,
+      "accepted_lines": 297,
+      "overriden_lines": 0
+    }
+  }
+}
