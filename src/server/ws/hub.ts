@@ -12,7 +12,11 @@ import type { TopicStore } from '../topic.js';
 import type { TaskStore } from '../task.js';
 import type { TopicCard, TaskRow, TopicDetailBundle } from './topic-envelope.js';
 import type Database from 'better-sqlite3';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { isEffortLevel } from '../session/state.js';
+
+const execFileP = promisify(execFile);
 
 export interface TopicDeps {
   topicManager: TopicManager;
@@ -245,9 +249,9 @@ export class WsHub {
         case 'client.topic.create': {
           const td = this.topicDeps;
           if (!td) return this.sendError(ws, 'topic support not initialised');
-          const { repoId, template, title, ticketKey, typeField, project } = env.payload;
+          const { repoId, template, title, ticketKey, typeField, project, branchOverride } = env.payload;
           td.topicManager.create({
-            repoId, template, title, ticketKey, type: typeField, project,
+            repoId, template, title, ticketKey, type: typeField, project, branchOverride,
           }).then(({ topic }) => {
             this.broadcast({ type: 'server.topic.created', payload: { topicId: topic.id } });
             this.broadcast(buildTopicState(td));
@@ -288,6 +292,40 @@ export class WsHub {
             this.broadcast(buildTopicState(td));
           }).catch((e: Error) => {
             this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'discard' } });
+          });
+          break;
+        }
+        case 'client.topic.previewBranch': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          const { repoId, title, ticketKey, override } = env.payload;
+          const repo = td.repos.getById(repoId);
+          if (!repo) return this.sendError(ws, 'unknown repo');
+          (async () => {
+            let branch = override?.trim() ?? '';
+            if (!branch) {
+              const { slugify } = await import('../slug.js');
+              const { renderBranchTemplate } = await import('../branch-template.js');
+              const { getOrFetchGithubLogin } = await import('../identity.js');
+              const { GitHubAdapter } = await import('../vcs/github.js');
+              const ghUser = await getOrFetchGithubLogin(td.rawDb, new GitHubAdapter()).catch(() => '');
+              branch = renderBranchTemplate(repo.branchTemplate, {
+                gh_user: ghUser, ticket: ticketKey ?? '', slug: slugify(title),
+                type: '', project: '',
+              });
+            }
+            const localExists = (await execFileP('git', ['branch', '--list', branch], { cwd: repo.path }).then((r) => r.stdout).catch(() => '')).trim() !== '';
+            const dup = td.rawDb.prepare('SELECT id, title FROM topic WHERE repo_id=? AND topic_branch=?').get(repo.id, branch) as { id: string; title: string } | undefined;
+            this.send(ws, {
+              type: 'server.topic.branchPreview',
+              payload: {
+                branch,
+                localBranchExists: localExists,
+                duplicateTopic: dup ?? null,
+              },
+            });
+          })().catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'previewBranch' } });
           });
           break;
         }

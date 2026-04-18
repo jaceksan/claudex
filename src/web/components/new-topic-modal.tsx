@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { send, subscribe } from '../lib/ws';
 import { useRepos } from '../hooks/use-repos';
@@ -35,6 +35,12 @@ const TEMPLATES = [
   { id: 'exploration', title: 'Exploration', blurb: 'Ambiguous scope. Brainstorm first; no branch yet.' },
 ] as const;
 
+type Preview = {
+  branch: string;
+  localBranchExists: boolean;
+  duplicateTopic: { id: string; title: string } | null;
+} | null;
+
 export function NewTopicModal({ onClose }: { onClose: () => void }) {
   const repos = useRepos();
   const [, navigate] = useLocation();
@@ -45,25 +51,51 @@ export function NewTopicModal({ onClose }: { onClose: () => void }) {
   const [ticketKey, setTicketKey] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [branchOverride, setBranchOverride] = useState('');
+  const [preview, setPreview] = useState<Preview>(null);
+  const [validating, setValidating] = useState(false);
+  const autoPreviewToken = useRef(0);
 
   useEffect(() => {
     if (!repoId && repos.length > 0) setRepoId(repos[0].id);
   }, [repos, repoId]);
 
+  // Auto-preview when auto-derived (no override): debounce typing by 400ms.
+  useEffect(() => {
+    if (branchOverride.trim()) return;
+    if (!repoId || !title.trim()) { setPreview(null); return; }
+    const token = ++autoPreviewToken.current;
+    const t = setTimeout(() => {
+      if (token !== autoPreviewToken.current) return;
+      send({ type: 'client.topic.previewBranch', payload: { repoId, title: title.trim(), ticketKey: ticketKey.trim() || undefined } });
+    }, 400);
+    return () => clearTimeout(t);
+  }, [repoId, title, ticketKey, branchOverride]);
+
+  function validateOverride() {
+    if (!repoId || !branchOverride.trim()) return;
+    setValidating(true);
+    send({ type: 'client.topic.previewBranch', payload: { repoId, title: title.trim(), ticketKey: ticketKey.trim() || undefined, override: branchOverride.trim() } });
+  }
+
   useEffect(() => {
     return subscribe((m) => {
-      if (m.type === 'server.topic.created') {
+      if (m.type === 'server.topic.branchPreview') {
+        setPreview(m.payload);
+        setValidating(false);
+      } else if (m.type === 'server.topic.created') {
         setSubmitting(false);
         onClose();
         navigate(`/topic/${m.payload.topicId}`);
-      }
-      else if (m.type === 'server.topic.error') {
+      } else if (m.type === 'server.topic.error') {
         if (m.payload.ctx === 'create') { setError(m.payload.message); setSubmitting(false); }
+        if (m.payload.ctx === 'previewBranch') { setValidating(false); }
       }
     });
   }, [onClose, navigate]);
 
-  const canSubmit = !!repoId && !!title.trim() && !submitting;
+  const conflict = !!preview && (preview.localBranchExists || !!preview.duplicateTopic);
+  const canSubmit = !!repoId && !!title.trim() && !submitting && !conflict && (!branchOverride.trim() || !!preview);
 
   function submit() {
     if (!canSubmit) return;
@@ -74,6 +106,7 @@ export function NewTopicModal({ onClose }: { onClose: () => void }) {
       payload: {
         repoId, template, title: title.trim(),
         ticketKey: ticketKey.trim() || undefined,
+        branchOverride: branchOverride.trim() || undefined,
       },
     });
   }
@@ -123,6 +156,42 @@ export function NewTopicModal({ onClose }: { onClose: () => void }) {
           <span className="text-zinc-300">Ticket (optional)</span>
           <input type="text" value={ticketKey} onChange={(e) => setTicketKey(e.target.value)} placeholder="ABC-123" className="mt-1 w-full rounded bg-zinc-800 px-3 py-2 text-sm outline-none ring-1 ring-zinc-700 focus:ring-blue-500" />
         </label>
+
+        {template !== 'exploration' && (
+          <div className="mb-3">
+            <div className="mb-1 text-sm text-zinc-300">Branch</div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={branchOverride}
+                onChange={(e) => { setBranchOverride(e.target.value); setPreview(null); }}
+                placeholder={preview?.branch ?? 'auto (gh_user/ticket_slug)'}
+                className="flex-1 rounded bg-zinc-800 px-3 py-2 font-mono text-xs outline-none ring-1 ring-zinc-700 focus:ring-blue-500"
+              />
+              <button
+                type="button"
+                onClick={validateOverride}
+                disabled={!branchOverride.trim() || validating}
+                className="rounded border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:border-zinc-500 disabled:opacity-40"
+              >
+                {validating ? 'Checking…' : 'Validate'}
+              </button>
+            </div>
+            {preview && !conflict && (
+              <div className="mt-1 text-xs text-emerald-300">✓ Will create <span className="font-mono">{preview.branch}</span></div>
+            )}
+            {preview?.duplicateTopic && (
+              <div className="mt-1 text-xs text-red-300">
+                ⚠ Duplicates existing topic “{preview.duplicateTopic.title}”. Edit the title/ticket or override the branch.
+              </div>
+            )}
+            {preview?.localBranchExists && !preview.duplicateTopic && (
+              <div className="mt-1 text-xs text-amber-300">
+                ⚠ Branch <span className="font-mono">{preview.branch}</span> already exists locally. Pick a different name or delete it first.
+              </div>
+            )}
+          </div>
+        )}
 
         {error && <div className="mb-3 rounded bg-red-900/40 p-2 text-xs text-red-200">{error}</div>}
 

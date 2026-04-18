@@ -43,6 +43,7 @@ export interface CreateTopicInput {
   ticketKey?: string | null;
   type?: string;
   project?: string;
+  branchOverride?: string;
 }
 
 export class TopicManager {
@@ -61,12 +62,17 @@ export class TopicManager {
       return { topic };
     }
 
-    const ghUser = await this.d.githubLogin();
-    const branchCtx: Record<string, string> = {
-      gh_user: ghUser, ticket: input.ticketKey ?? '', slug,
-      type: input.type ?? '', project: input.project ?? '',
-    };
-    const topicBranch = renderBranchTemplate(repo.branchTemplate, branchCtx);
+    let topicBranch: string;
+    if (input.branchOverride?.trim()) {
+      topicBranch = input.branchOverride.trim();
+    } else {
+      const ghUser = await this.d.githubLogin();
+      const branchCtx: Record<string, string> = {
+        gh_user: ghUser, ticket: input.ticketKey ?? '', slug,
+        type: input.type ?? '', project: input.project ?? '',
+      };
+      topicBranch = renderBranchTemplate(repo.branchTemplate, branchCtx);
+    }
 
     await this.d.git(['fetch', repo.canonicalRemote, repo.defaultBranch], repo.path);
     await this.d.git(['branch', topicBranch, `${repo.canonicalRemote}/${repo.defaultBranch}`], repo.path);

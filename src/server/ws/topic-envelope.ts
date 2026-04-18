@@ -6,12 +6,14 @@ export type TopicClientMessage =
       ticketKey?: string;
       typeField?: string;
       project?: string;
+      branchOverride?: string;
     } }
   | { type: 'client.topic.addAttempt'; payload: { topicId: string; prompt?: string; effort: string; permissionMode: string; label?: string } }
   | { type: 'client.topic.accept'; payload: { sessionId: string } }
   | { type: 'client.topic.discard'; payload: { sessionId: string } }
   | { type: 'client.topic.list'; payload: { repoId?: string } }
   | { type: 'client.topic.delete'; payload: { topicId: string } }
+  | { type: 'client.topic.previewBranch'; payload: { repoId: string; title: string; ticketKey?: string; override?: string } }
   | { type: 'client.topic.subscribe'; payload: { topicId: string } }
   | { type: 'client.topic.unsubscribe'; payload: { topicId: string } }
   | { type: 'client.topic.acceptTask'; payload: { sessionId: string } }
@@ -31,6 +33,11 @@ export type TopicServerMessage =
   | { type: 'server.topic.error'; payload: { message: string; ctx?: string } }
   | { type: 'server.repo.state'; payload: { repos: RepoRow[] } }
   | { type: 'server.topic.detail'; payload: TopicDetailBundle }
+  | { type: 'server.topic.branchPreview'; payload: {
+      branch: string;
+      localBranchExists: boolean;
+      duplicateTopic: { id: string; title: string } | null;
+    } }
   | { type: 'server.session.siblings'; payload: { sessionId: string; topicId: string | null; siblings: SiblingRow[] } };
 
 export interface SiblingRow {
