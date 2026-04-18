@@ -6,3 +6,4 @@ dist
 coverage
 .superpowers
 .worktrees
+.claude/worktrees
