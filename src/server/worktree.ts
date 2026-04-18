@@ -50,11 +50,17 @@ export function createWorktree(
 }
 
 export function removeWorktree(origin: string, wtPath: string): void {
+  // Never touch the source repo even if state got corrupted and wtPath == origin.
+  // Only rm paths that live under ~/.claudex/worktrees/.
+  const claudexRoot = path.join(os.homedir(), '.claudex', 'worktrees');
+  const normalized = path.resolve(wtPath);
+  const safe = normalized.startsWith(claudexRoot + path.sep) && normalized !== path.resolve(origin);
   try {
     run('git', ['worktree', 'remove', '--force', wtPath], origin);
   } catch {
-    // If git can't remove it (e.g. directory already gone), fall back to prune + rm.
     try { run('git', ['worktree', 'prune'], origin); } catch { /* ignore */ }
-    try { rmSync(wtPath, { recursive: true, force: true }); } catch { /* ignore */ }
+    if (safe) {
+      try { rmSync(wtPath, { recursive: true, force: true }); } catch { /* ignore */ }
+    }
   }
 }
