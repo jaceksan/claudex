@@ -27,9 +27,15 @@ export function resolveGitRoot(cwd: string): string | null {
   catch { return null; }
 }
 
-/** Sanitise a string for use as a directory name — strip slashes and other shell-hostile chars. */
+/** Sanitise a relative path for use as a worktree location. Preserves `/` as a subdir
+ * separator (so `user/topic__task` nests under `user/`), but scrubs shell-hostile chars
+ * from each segment and caps each segment at 100 chars. */
 export function safeDirName(input: string): string {
-  return input.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 100);
+  return input
+    .split('/')
+    .map((seg) => seg.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 100))
+    .filter((seg) => seg.length > 0)
+    .join('/');
 }
 
 export function createWorktree(
@@ -55,6 +61,9 @@ export function createWorktree(
     // Cleanup a stale path left over from a crashed prior session under the same id.
     try { rmSync(wtPath, { recursive: true, force: true }); } catch { /* ignore */ }
   }
+  // Nested dirs (e.g. jaceksan/repo__...) need their parent created first; git worktree add
+  // creates only the leaf.
+  mkdirSync(path.dirname(wtPath), { recursive: true });
   const addArgs = base
     ? ['worktree', 'add', '-b', branch, wtPath, base]
     : ['worktree', 'add', '-b', branch, wtPath];

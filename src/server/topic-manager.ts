@@ -92,44 +92,55 @@ export class TopicManager {
     if (topic.phase !== 'Draft') throw new Error(`cannot add attempt: phase ${topic.phase}`);
     if (topic.acceptedAttemptId) throw new Error('cannot add attempt after accept — use fix task');
     const repo = this.d.repos.getById(topic.repoId)!;
-    const existing = this.d.tasks.listByTopic(topicId).filter((t) => t.type === 'attempt');
 
-    // Find a free attempt number. Leftover branches from prior partial failures
-    // (session spawn crashed after the branch was created, or a prior discard that
-    // didn't drop the branch) would otherwise collide with `git worktree add -b`.
-    let attemptBranch = '';
-    let nStr = '';
-    const maxAttempts = existing.length + 50;
-    for (let n = existing.length + 1; n <= maxAttempts; n++) {
-      nStr = String(n);
-      attemptBranch = topic.topicBranch! + renderBranchTemplate(repo.attemptSuffix, { n: nStr });
-      // `git branch --list <name>` is empty when the branch doesn't exist.
-      const existsOutput = await this.d.git(['branch', '--list', attemptBranch], repo.path);
-      if (existsOutput.trim() === '') break;
+    // Task title is required — it becomes the slug used in the branch and worktree name.
+    // No auto-numbered fallback; the UI surfaces the error on submit.
+    const rawLabel = args.label?.trim() ?? '';
+    if (!rawLabel) throw new Error('task title is required');
+    const taskSlug = slugify(rawLabel);
+    if (!taskSlug) throw new Error('task title must contain at least one letter or digit');
+
+    // Branch: <topic-branch>__<task-slug>. Must be unique within the repo; the slug
+    // collision check detects duplicates before we even touch git.
+    const existing = this.d.tasks.listByTopic(topicId)
+      .filter((t) => t.type === 'attempt' && !t.discardedAt)
+      .map((t) => slugify(t.label ?? ''));
+    if (existing.includes(taskSlug)) {
+      throw new Error(`a task with title "${rawLabel}" already exists on this topic`);
     }
-    if (!attemptBranch) throw new Error('could not find a free attempt branch name');
+    const attemptBranch = `${topic.topicBranch!}__${taskSlug}`;
+    const branchExists = (await this.d.git(['branch', '--list', attemptBranch], repo.path)).trim() !== '';
+    if (branchExists) {
+      throw new Error(`branch ${attemptBranch} already exists — pick a different task title or delete the leftover branch`);
+    }
 
-    // Create the worktree BEFORE spawning so the Claude subprocess's cwd is the worktree,
-    // not the source repo. Pre-generate the uiId so the worktree dir name matches the session.
+    // Worktree dir: <gh_user>/<repo-base>__<ticket>__<topic-slug>__<task-slug>. Repo gets
+    // injected here (not in the branch) because worktrees live in a single global dir
+    // under ~/.claudex/worktrees and can collide across repos; branches can't.
     const presetUiId = randomUUID();
+    const ghUser = await this.d.githubLogin().catch(() => 'claudex');
     const repoBase = repo.path.split('/').pop() ?? 'repo';
+    const dirTail = renderBranchTemplate('{repo}__{ticket}__{slug}__{task}', {
+      repo: repoBase, ticket: topic.ticketKey ?? '', slug: topic.slug, task: taskSlug,
+    });
+    const dirName = `${ghUser}/${dirTail}`;
     const wt = this.d.createWorktree(repo.path, presetUiId, {
       branch: attemptBranch,
       base: topic.topicBranch!,
-      dirName: `${repoBase}__${topic.slug}-${nStr}`,
+      dirName,
     });
     const session = await this.d.spawnSession({
-      cwd: wt.path, label: args.label ?? `attempt-${nStr}`,
+      cwd: wt.path, label: rawLabel,
       prompt: args.prompt, effort: args.effort, permissionMode: args.permissionMode,
       presetUiId, worktree: wt,
       appendSystemPrompt: orientationHint({
         cwd: wt.path, branch: attemptBranch, base: topic.topicBranch!,
-        topicTitle: topic.title, taskLabel: args.label ?? `attempt-${nStr}`,
+        topicTitle: topic.title, taskLabel: rawLabel,
       }),
     });
     return this.d.tasks.create({
       sessionId: session.id, topicId, type: 'attempt',
-      label: args.label ?? `attempt-${nStr}`,
+      label: rawLabel,
       childBranch: attemptBranch, worktreePath: wt.path,
     });
   }
@@ -181,14 +192,29 @@ export class TopicManager {
       throw new Error(`cannot add fix task: another task (${running[0].type}) is already running`);
     }
 
-    // Worktree first, spawn inside it.
+    // Fix branch: <topic-branch>__claudex_fix__<n>, n = existing fix tasks + 1.
+    // Bump past pre-existing branches from partial failures (same bump logic as attempt).
     const presetUiId = randomUUID();
-    const childBranch = `${topic.topicBranch}__fix-${presetUiId.slice(0, 6)}`;
+    const existingFix = this.d.tasks.listByTopic(topicId)
+      .filter((t) => t.type === 'fix-comments' || t.type === 'fix-ci');
+    let childBranch = '';
+    let fixN = 0;
+    for (let n = existingFix.length + 1; n <= existingFix.length + 50; n++) {
+      const candidate = `${topic.topicBranch}__claudex_fix__${n}`;
+      const branchExists = (await this.d.git(['branch', '--list', candidate], repo.path)).trim() !== '';
+      if (!branchExists) { childBranch = candidate; fixN = n; break; }
+    }
+    if (!childBranch) throw new Error('could not find a free fix branch name');
+
+    const ghUser = await this.d.githubLogin().catch(() => 'claudex');
     const repoBase = repo.path.split('/').pop() ?? 'repo';
+    const dirTail = renderBranchTemplate('{repo}__{ticket}__{slug}__claudex_fix__{n}', {
+      repo: repoBase, ticket: topic.ticketKey ?? '', slug: topic.slug, n: String(fixN),
+    });
     const wt = this.d.createWorktree(repo.path, presetUiId, {
       branch: childBranch,
       base: topic.topicBranch!,
-      dirName: `${repoBase}__${topic.slug}-fix-${presetUiId.slice(0, 6)}`,
+      dirName: `${ghUser}/${dirTail}`,
     });
     const session = await this.d.spawnSession({
       cwd: wt.path,

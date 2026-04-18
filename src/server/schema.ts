@@ -30,7 +30,7 @@ export function ensureSchema(db: Database.Database): void {
       fork_owner TEXT,
       fork_name TEXT,
       tracker_mcp TEXT,
-      branch_template TEXT NOT NULL DEFAULT '{gh_user}/{ticket}_{slug}',
+      branch_template TEXT NOT NULL DEFAULT '{gh_user}/{ticket}__{slug}',
       commit_template TEXT NOT NULL DEFAULT '{subject}',
       attempt_suffix TEXT NOT NULL DEFAULT '__attempt-{n}',
       validate_cmd TEXT,

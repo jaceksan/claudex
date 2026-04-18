@@ -33,8 +33,8 @@ describe('TopicManager end-to-end (stubbed git/spawn/worktree)', () => {
     });
     expect(topic.phase).toBe('Draft');
 
-    const task = await mgr.addAttempt(topic.id, { effort: 'medium', permissionMode: 'acceptEdits' });
-    await mgr.addAttempt(topic.id, { effort: 'medium', permissionMode: 'acceptEdits' });
+    const task = await mgr.addAttempt(topic.id, { label: 'first', effort: 'medium', permissionMode: 'acceptEdits' });
+    await mgr.addAttempt(topic.id, { label: 'second', effort: 'medium', permissionMode: 'acceptEdits' });
     const tasksOnTopic = tasks.listByTopic(topic.id);
     expect(tasksOnTopic.filter((t) => t.type === 'attempt')).toHaveLength(2);
 

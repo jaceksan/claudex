@@ -62,7 +62,7 @@ export class RepoStore {
       input.canonicalOwner ?? null, input.canonicalName ?? null,
       input.forkOwner ?? null, input.forkName ?? null,
       input.trackerMcp ?? null,
-      input.branchTemplate ?? '{gh_user}/{ticket}_{slug}',
+      input.branchTemplate ?? '{gh_user}/{ticket}__{slug}',
       input.commitTemplate ?? '{subject}',
       input.validateCmd ?? null,
       now,

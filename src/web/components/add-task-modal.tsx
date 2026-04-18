@@ -26,6 +26,10 @@ export function AddTaskModal({ topicId, onClose }: { topicId: string; onClose: (
 
   function submit() {
     if (submitting) return;
+    if (!title.trim()) {
+      setError('Title is required — it becomes the task branch / worktree name.');
+      return;
+    }
     if (getConnectionState() !== 'open') {
       setError('Not connected to the claudex server. Start it and try again.');
       return;
@@ -38,7 +42,7 @@ export function AddTaskModal({ topicId, onClose }: { topicId: string; onClose: (
         topicId,
         effort,
         permissionMode: mode,
-        label: title.trim() || undefined,
+        label: title.trim(),
       },
     });
   }
@@ -49,15 +53,17 @@ export function AddTaskModal({ topicId, onClose }: { topicId: string; onClose: (
         <h2 className="mb-4 text-lg font-semibold">New task</h2>
 
         <label className="mb-3 block text-sm">
-          <span className="text-zinc-300">Title (optional)</span>
+          <span className="text-zinc-300">Title</span>
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             autoFocus
+            required
             placeholder="e.g. Fix the null-check path"
             className="mt-1 w-full rounded bg-zinc-800 px-3 py-2 text-sm outline-none ring-1 ring-zinc-700 focus:ring-blue-500"
           />
+          <div className="mt-1 text-xs text-zinc-500">Becomes the task branch + worktree name. Must be unique within this topic.</div>
         </label>
 
         <div className="mb-3 grid grid-cols-2 gap-2 text-sm">
