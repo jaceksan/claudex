@@ -3,7 +3,8 @@ import Database from 'better-sqlite3';
 import { ensureSchema } from '../src/server/schema.js';
 import { RepoStore } from '../src/server/repo.js';
 import { TopicStore } from '../src/server/topic.js';
-import { PrLifecycle } from '../src/server/pr-lifecycle.js';
+import { PrLifecycle, ciRollup } from '../src/server/pr-lifecycle.js';
+import type { CiNotifier } from '../src/server/pr-lifecycle.js';
 import type { VcsAdapter, PR, ReviewThread, Check } from '../src/server/vcs/adapter.js';
 import type { Task } from '../src/server/task.js';
 import type { PrBundle } from '../src/server/pr-cache.js';
@@ -78,16 +79,23 @@ describe('PrLifecycle.createPR', () => {
       addFixTask: vi.fn().mockResolvedValue({ sessionId: 'sess_fix' }),
     };
 
+    const emptyBundle: PrBundle = {
+      pr: makeFakePR(42), threads: [], checks: [], requiredContexts: [], fetchedAt: Date.now(),
+    };
+
     lifecycle = new PrLifecycle({
       repos,
       topics,
       adapter: (_repoId) => fakeAdapter as VcsAdapter,
-      prCache: { get: vi.fn(), invalidate: vi.fn() } as unknown as import('../src/server/pr-cache.js').PrCache,
+      prCache: { get: vi.fn().mockResolvedValue(emptyBundle), invalidate: vi.fn() } as unknown as import('../src/server/pr-cache.js').PrCache,
       git: async (args, cwd) => {
         gitCalls.push({ args, cwd });
         return '';
       },
       topicManager: fakeTopicManager,
+      // No-op timers so no real intervals leak from the auto-watch in createPR.
+      setInterval: (() => 0 as unknown as ReturnType<typeof setInterval>),
+      clearInterval: (() => {}),
     });
   });
 
@@ -518,5 +526,250 @@ describe('PrLifecycle.onFixAccepted', () => {
     await lifecycle.onFixAccepted(topic, task, 'deadbeef');
 
     expect(mockInvalidate).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CI rollup helper
+// ---------------------------------------------------------------------------
+describe('ciRollup', () => {
+  function makeBundle(checks: Check[], requiredContexts: string[]): PrBundle {
+    return {
+      pr: makeFakePR(1),
+      threads: [],
+      checks,
+      requiredContexts,
+      fetchedAt: Date.now(),
+    };
+  }
+
+  it('returns running when no required checks exist', () => {
+    expect(ciRollup(makeBundle([], []))).toBe('running');
+  });
+
+  it('returns running when required checks have no result yet', () => {
+    const c: Check = { name: 'ci', status: 'in_progress', conclusion: null, runId: 1, url: '', startedAt: null, completedAt: null };
+    expect(ciRollup(makeBundle([c], ['ci']))).toBe('running');
+  });
+
+  it('returns failed when any required check failed', () => {
+    const ok: Check = { name: 'lint', status: 'completed', conclusion: 'success', runId: 1, url: '', startedAt: null, completedAt: null };
+    const fail: Check = { name: 'tests', status: 'completed', conclusion: 'failure', runId: 2, url: '', startedAt: null, completedAt: null };
+    expect(ciRollup(makeBundle([ok, fail], ['lint', 'tests']))).toBe('failed');
+  });
+
+  it('returns ok when all required checks passed', () => {
+    const c: Check = { name: 'ci', status: 'completed', conclusion: 'success', runId: 1, url: '', startedAt: null, completedAt: null };
+    expect(ciRollup(makeBundle([c], ['ci']))).toBe('ok');
+  });
+
+  it('ignores non-required checks', () => {
+    const required: Check = { name: 'ci', status: 'completed', conclusion: 'success', runId: 1, url: '', startedAt: null, completedAt: null };
+    const nonRequired: Check = { name: 'e2e', status: 'completed', conclusion: 'failure', runId: 2, url: '', startedAt: null, completedAt: null };
+    expect(ciRollup(makeBundle([required, nonRequired], ['ci']))).toBe('ok');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CI watch — poll + notifications
+// ---------------------------------------------------------------------------
+describe('PrLifecycle CI watch', () => {
+  let db: Database.Database;
+  let repos: RepoStore;
+  let topics: TopicStore;
+  let notifier: CiNotifier & { calls: Array<{ prev: string; curr: string }> };
+
+  function makeBundle(checks: Array<{ name: string; conclusion: Check['conclusion'] }>, required: string[]): PrBundle {
+    return {
+      pr: makeFakePR(99),
+      threads: [],
+      checks: checks.map(({ name, conclusion }) => ({
+        name, conclusion, status: 'completed', runId: 1, url: '', startedAt: null, completedAt: null,
+      })),
+      requiredContexts: required,
+      fetchedAt: Date.now(),
+    };
+  }
+
+  function makeLifecycle(prCacheGet: ReturnType<typeof vi.fn>) {
+    return new PrLifecycle({
+      repos,
+      topics,
+      adapter: () => ({ kind: 'github' } as VcsAdapter),
+      prCache: { get: prCacheGet, invalidate: vi.fn() } as unknown as import('../src/server/pr-cache.js').PrCache,
+      git: async () => '',
+      topicManager: { addFixTask: vi.fn().mockResolvedValue({ sessionId: 'x' }) },
+      notifications: notifier,
+      // Use no-op setInterval/clearInterval to avoid leaking real timers in tests.
+      setInterval: (() => 0 as unknown as ReturnType<typeof setInterval>),
+      clearInterval: (() => {}),
+    });
+  }
+
+  beforeEach(() => {
+    db = new Database(':memory:');
+    ensureSchema(db);
+    repos = new RepoStore(db);
+    topics = new TopicStore(db);
+
+    const _calls: Array<{ prev: string; curr: string }> = [];
+    notifier = {
+      calls: _calls,
+      ciStateChanged(_topic, prev, curr) { _calls.push({ prev, curr }); },
+    };
+  });
+
+  function makeOpenTopic(repoId: string) {
+    const t = topics.create({
+      repoId, phase: 'Draft', template: 'standard',
+      title: 'Watch topic', slug: 'watch-topic',
+      topicBranch: 'jaceksan/watch-topic',
+    });
+    topics.setPhase(t.id, 'Open', { prNumber: 99 });
+    return topics.getById(t.id)!;
+  }
+
+  it('persists watch_ci=1 when enabling', async () => {
+    const repo = repos.register({ path: '/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'fork', defaultBranch: 'main' });
+    const topic = makeOpenTopic(repo.id);
+    const prCacheGet = vi.fn().mockResolvedValue(makeBundle([{ name: 'ci', conclusion: 'success' }], ['ci']));
+    const lifecycle = makeLifecycle(prCacheGet);
+
+    await lifecycle.watchCi(topic.id, true);
+
+    expect(topics.getById(topic.id)!.watchCi).toBe(true);
+  });
+
+  it('persists watch_ci=0 when disabling', async () => {
+    const repo = repos.register({ path: '/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'fork', defaultBranch: 'main' });
+    const topic = makeOpenTopic(repo.id);
+    const prCacheGet = vi.fn().mockResolvedValue(makeBundle([], []));
+    const lifecycle = makeLifecycle(prCacheGet);
+
+    await lifecycle.watchCi(topic.id, true);
+    await lifecycle.watchCi(topic.id, false);
+
+    expect(topics.getById(topic.id)!.watchCi).toBe(false);
+  });
+
+  it('does NOT fire notification on first poll (no prev state)', async () => {
+    const repo = repos.register({ path: '/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'fork', defaultBranch: 'main' });
+    const topic = makeOpenTopic(repo.id);
+    const prCacheGet = vi.fn().mockResolvedValue(makeBundle([{ name: 'ci', conclusion: 'success' }], ['ci']));
+    const lifecycle = makeLifecycle(prCacheGet);
+
+    await lifecycle.watchCi(topic.id, true);
+
+    expect(notifier.calls).toHaveLength(0);
+  });
+
+  it('fires notification on running→ok transition via _pollCi', async () => {
+    const repo = repos.register({ path: '/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'fork', defaultBranch: 'main' });
+    const topic = makeOpenTopic(repo.id);
+
+    // Alternate bundles: first call = running, second call = ok
+    const prCacheGet = vi.fn()
+      .mockResolvedValueOnce(makeBundle([{ name: 'ci', conclusion: null }], ['ci']))   // running
+      .mockResolvedValueOnce(makeBundle([{ name: 'ci', conclusion: 'success' }], ['ci'])); // ok
+
+    const lifecycle = makeLifecycle(prCacheGet);
+
+    let prevState: import('../src/server/notifications.js').CiRollupState | null = null;
+
+    // First poll — establishes baseline (running), no notification
+    await lifecycle._pollCi(topic.id, '/r', 99, 'main', prevState, (s) => { prevState = s; });
+    expect(notifier.calls).toHaveLength(0);
+
+    // Second poll — transitions running→ok, should notify
+    await lifecycle._pollCi(topic.id, '/r', 99, 'main', prevState, (s) => { prevState = s; });
+    expect(notifier.calls).toHaveLength(1);
+    expect(notifier.calls[0]).toEqual({ prev: 'running', curr: 'ok' });
+  });
+
+  it('fires notification on running→failed transition via _pollCi', async () => {
+    const repo = repos.register({ path: '/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'fork', defaultBranch: 'main' });
+    const topic = makeOpenTopic(repo.id);
+
+    const prCacheGet = vi.fn()
+      .mockResolvedValueOnce(makeBundle([{ name: 'ci', conclusion: null }], ['ci']))    // running
+      .mockResolvedValueOnce(makeBundle([{ name: 'ci', conclusion: 'failure' }], ['ci'])); // failed
+
+    const lifecycle = makeLifecycle(prCacheGet);
+    let prevState: import('../src/server/notifications.js').CiRollupState | null = null;
+
+    await lifecycle._pollCi(topic.id, '/r', 99, 'main', prevState, (s) => { prevState = s; });
+    await lifecycle._pollCi(topic.id, '/r', 99, 'main', prevState, (s) => { prevState = s; });
+
+    expect(notifier.calls).toHaveLength(1);
+    expect(notifier.calls[0]).toEqual({ prev: 'running', curr: 'failed' });
+  });
+
+  it('does not fire notification when state stays the same', async () => {
+    const repo = repos.register({ path: '/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'fork', defaultBranch: 'main' });
+    const topic = makeOpenTopic(repo.id);
+
+    const runningBundle = makeBundle([{ name: 'ci', conclusion: null }], ['ci']);
+    const prCacheGet = vi.fn().mockResolvedValue(runningBundle);
+
+    const lifecycle = makeLifecycle(prCacheGet);
+    let prevState: import('../src/server/notifications.js').CiRollupState | null = null;
+
+    await lifecycle._pollCi(topic.id, '/r', 99, 'main', prevState, (s) => { prevState = s; });
+    await lifecycle._pollCi(topic.id, '/r', 99, 'main', prevState, (s) => { prevState = s; });
+
+    expect(notifier.calls).toHaveLength(0);
+  });
+
+  it('stopWatch clears the interval and removes from map', async () => {
+    const repo = repos.register({ path: '/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'fork', defaultBranch: 'main' });
+    const topic = makeOpenTopic(repo.id);
+
+    const cleared: unknown[] = [];
+    const lifecycle = new PrLifecycle({
+      repos, topics,
+      adapter: () => ({ kind: 'github' } as VcsAdapter),
+      prCache: {
+        get: vi.fn().mockResolvedValue(makeBundle([], [])),
+        invalidate: vi.fn(),
+      } as unknown as import('../src/server/pr-cache.js').PrCache,
+      git: async () => '',
+      topicManager: { addFixTask: vi.fn().mockResolvedValue({ sessionId: 'x' }) },
+      notifications: notifier,
+      setInterval: (() => 99 as unknown as ReturnType<typeof setInterval>),
+      clearInterval: ((h) => cleared.push(h)),
+    });
+
+    await lifecycle.watchCi(topic.id, true);
+    lifecycle.stopWatch(topic.id);
+
+    expect(cleared).toContain(99);
+    // Calling stopWatch again is a no-op — no double-clear
+    lifecycle.stopWatch(topic.id);
+    expect(cleared).toHaveLength(1);
+  });
+
+  it('does not double-register a watcher if watchCi called twice', async () => {
+    const repo = repos.register({ path: '/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'fork', defaultBranch: 'main' });
+    const topic = makeOpenTopic(repo.id);
+
+    let setIntervalCalls = 0;
+    const lifecycle = new PrLifecycle({
+      repos, topics,
+      adapter: () => ({ kind: 'github' } as VcsAdapter),
+      prCache: {
+        get: vi.fn().mockResolvedValue(makeBundle([], [])),
+        invalidate: vi.fn(),
+      } as unknown as import('../src/server/pr-cache.js').PrCache,
+      git: async () => '',
+      topicManager: { addFixTask: vi.fn().mockResolvedValue({ sessionId: 'x' }) },
+      notifications: notifier,
+      setInterval: (() => { setIntervalCalls++; return setIntervalCalls as unknown as ReturnType<typeof setInterval>; }),
+      clearInterval: (() => {}),
+    });
+
+    await lifecycle.watchCi(topic.id, true);
+    await lifecycle.watchCi(topic.id, true); // second enable — should be a no-op
+
+    expect(setIntervalCalls).toBe(1);
   });
 });

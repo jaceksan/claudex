@@ -2,7 +2,8 @@ import type { RepoStore } from './repo.js';
 import type { TopicStore, Topic } from './topic.js';
 import type { Task } from './task.js';
 import type { VcsAdapter } from './vcs/adapter.js';
-import type { PrCache } from './pr-cache.js';
+import type { PrCache, PrBundle } from './pr-cache.js';
+import type { CiRollupState } from './notifications.js';
 import { renderActionPrompt } from './skill-invoker.js';
 
 /** Narrow interface to avoid circular import with topic-manager. */
@@ -20,7 +21,31 @@ export interface FixTaskAdder {
   ): Promise<{ sessionId: string }>;
 }
 
+/** Narrow interface for CI notification — avoids importing the full NotificationEngine. */
+export interface CiNotifier {
+  ciStateChanged(topic: { id: string; title: string }, prev: CiRollupState, curr: CiRollupState): void;
+}
+
+/** Derive a simple 3-state rollup from a PR bundle's required checks. */
+export function ciRollup(bundle: PrBundle): CiRollupState {
+  const required = bundle.checks.filter((c) => bundle.requiredContexts.includes(c.name));
+  if (required.length === 0) return 'running'; // no info yet — treat as pending
+  if (required.some((c) => c.conclusion === 'failure')) return 'failed';
+  if (required.every((c) => c.conclusion === 'success')) return 'ok';
+  return 'running'; // some pending / in_progress
+}
+
 export class PrLifecycle {
+  /** In-memory map of active CI poll intervals keyed by topicId. */
+  private readonly ciPollers = new Map<string, ReturnType<typeof setInterval>>();
+
+  /**
+   * Injectable timer functions — overridden in tests via fake timers or by
+   * passing explicit replacements to keep intervals from leaking.
+   */
+  private _setInterval: typeof setInterval;
+  private _clearInterval: typeof clearInterval;
+
   constructor(
     private deps: {
       repos: RepoStore;
@@ -29,8 +54,16 @@ export class PrLifecycle {
       prCache: PrCache;
       git: (args: string[], cwd?: string) => Promise<string>;
       topicManager: FixTaskAdder;
+      notifications?: CiNotifier;
+      /** Override setInterval for tests. Defaults to global setInterval. */
+      setInterval?: typeof setInterval;
+      /** Override clearInterval for tests. Defaults to global clearInterval. */
+      clearInterval?: typeof clearInterval;
     }
-  ) {}
+  ) {
+    this._setInterval = deps.setInterval ?? setInterval;
+    this._clearInterval = deps.clearInterval ?? clearInterval;
+  }
 
   async createPR(topicId: string, args: { title?: string; body?: string }): Promise<number> {
     const topic = this.deps.topics.getById(topicId);
@@ -44,7 +77,99 @@ export class PrLifecycle {
     const body = args.body ?? (repo.prBodyTemplate ?? defaultBody(topic));
     const pr = await adapter.createPR({ cwd: repo.path, base: repo.defaultBranch, head: topic.topicBranch, title, body });
     this.deps.topics.setPhase(topicId, 'Open', { prNumber: pr.number });
+
+    // Auto-enable CI watch after creating a PR.
+    await this.watchCi(topicId, true);
+
     return pr.number;
+  }
+
+  /**
+   * Enable or disable the CI poll watcher for a topic.
+   *
+   * When enabled, polls prCache every 2 minutes and fires a ciStateChanged
+   * OS notification on rollup transitions (running→ok, running→failed,
+   * failed→ok, etc.).
+   *
+   * Disabling clears the interval and persists watch_ci=0.
+   *
+   * Note: auto-disable on PR merge/close is not wired here.  Call
+   * stopWatch(topicId) from the PR-merge handler added in Plan 4.
+   */
+  async watchCi(topicId: string, enable: boolean): Promise<void> {
+    this.deps.topics.setWatchCi(topicId, enable);
+
+    if (!enable) {
+      this.stopWatch(topicId);
+      return;
+    }
+
+    // If already watching, don't double-register.
+    if (this.ciPollers.has(topicId)) return;
+
+    const topic = this.deps.topics.getById(topicId);
+    if (!topic) throw new Error(`topic ${topicId} not found`);
+    if (!topic.prNumber) return; // no PR yet; skip — watch will be re-armed when PR is available
+
+    const repo = this.deps.repos.getById(topic.repoId)!;
+
+    let prevState: CiRollupState | null = null;
+
+    const tick = async () => {
+      await this._pollCi(topicId, repo.path, topic.prNumber!, repo.defaultBranch, prevState, (curr) => {
+        prevState = curr;
+      });
+    };
+
+    // Do an initial poll immediately so we have a baseline state.
+    await tick();
+
+    const handle = this._setInterval(() => {
+      tick().catch((e) => console.error(`[ci-watch] poll error for ${topicId}:`, e));
+    }, 120_000);
+
+    this.ciPollers.set(topicId, handle);
+  }
+
+  /**
+   * Stop a CI poll watcher for a topic without persisting (use watchCi(id, false)
+   * for the full disable path). Called by Plan 4 PR-merge handler and tests.
+   */
+  stopWatch(topicId: string): void {
+    const handle = this.ciPollers.get(topicId);
+    if (handle !== undefined) {
+      this._clearInterval(handle);
+      this.ciPollers.delete(topicId);
+    }
+  }
+
+  /**
+   * Perform one CI poll cycle. Exported for direct test use.
+   * Returns the new rollup state.
+   */
+  async _pollCi(
+    topicId: string,
+    repoCwd: string,
+    prNumber: number,
+    defaultBranch: string,
+    prevState: CiRollupState | null,
+    onState: (curr: CiRollupState) => void,
+  ): Promise<CiRollupState> {
+    const bundle = await this.deps.prCache.get(repoCwd, prNumber, defaultBranch, true);
+    const curr = ciRollup(bundle);
+    const topic = this.deps.topics.getById(topicId);
+
+    const shouldNotify =
+      prevState !== null &&
+      prevState !== curr &&
+      this.deps.notifications;
+
+    if (shouldNotify && topic) {
+      this.deps.notifications!.ciStateChanged(topic, prevState!, curr);
+    }
+
+    onState(curr);
+    return curr;
   }
 
   async addressFeedback(

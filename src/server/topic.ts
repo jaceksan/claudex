@@ -18,6 +18,7 @@ export interface Topic {
   ticketKey: string | null; title: string; slug: string;
   topicBranch: string | null; prNumber: number | null;
   acceptedAttemptId: string | null; blockedOnHuman: boolean;
+  watchCi: boolean;
   createdAt: number; mergedAt: number | null; closedAt: number | null;
 }
 
@@ -61,6 +62,10 @@ export class TopicStore {
     const info = this.db.prepare('UPDATE topic SET blocked_on_human=? WHERE id=?').run(blocked ? 1 : 0, id);
     if (info.changes === 0) throw new Error(`topic ${id} not found`);
   }
+  setWatchCi(id: string, enabled: boolean): void {
+    const info = this.db.prepare('UPDATE topic SET watch_ci=? WHERE id=?').run(enabled ? 1 : 0, id);
+    if (info.changes === 0) throw new Error(`topic ${id} not found`);
+  }
   private hydrate(r: Record<string, unknown>): Topic {
     return {
       id: r.id as string, repoId: r.repo_id as string,
@@ -71,6 +76,7 @@ export class TopicStore {
       prNumber: (r.pr_number as number) ?? null,
       acceptedAttemptId: (r.accepted_attempt_id as string) ?? null,
       blockedOnHuman: Boolean(r.blocked_on_human as number),
+      watchCi: Boolean(r.watch_ci as number),
       createdAt: r.created_at as number,
       mergedAt: (r.merged_at as number) ?? null,
       closedAt: (r.closed_at as number) ?? null,

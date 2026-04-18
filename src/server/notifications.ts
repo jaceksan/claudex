@@ -1,7 +1,9 @@
 import { EventEmitter } from 'node:events';
 import type { StreamEvent } from './stream-json/types.js';
 
-export type NotificationKind = 'session-ended' | 'tool-error' | 'plan-ready' | 'permission-pending';
+export type CiRollupState = 'running' | 'ok' | 'failed';
+
+export type NotificationKind = 'session-ended' | 'tool-error' | 'plan-ready' | 'permission-pending' | 'ci-state-changed';
 
 export interface Notification {
   sessionId: string;
@@ -17,7 +19,39 @@ function label(ctx: NotificationContext): string {
   return ctx.title?.trim() || ctx.sessionId.slice(0, 8);
 }
 
+export interface CiNotification {
+  topicId: string;
+  topicTitle: string;
+  kind: 'ci-state-changed';
+  prev: CiRollupState;
+  curr: CiRollupState;
+  title: string;
+  body: string;
+  timestamp: number;
+}
+
 export class NotificationEngine extends EventEmitter {
+  /**
+   * Emit an OS-only notification when CI state transitions on a watched topic.
+   * Fires the 'ci-notification' event (not 'notification') so it bypasses the
+   * in-app toaster (which was removed in Plan 2) and is picked up only by OS
+   * notification backends.
+   */
+  ciStateChanged(topic: { id: string; title: string }, prev: CiRollupState, curr: CiRollupState): void {
+    const stateLabel: Record<CiRollupState, string> = { running: 'Running', ok: 'Passed', failed: 'Failed' };
+    const n: CiNotification = {
+      topicId: topic.id,
+      topicTitle: topic.title,
+      kind: 'ci-state-changed',
+      prev,
+      curr,
+      title: `CI ${stateLabel[curr]} · ${topic.title}`,
+      body: `Status changed: ${stateLabel[prev]} → ${stateLabel[curr]}`,
+      timestamp: Date.now(),
+    };
+    this.emit('ci-notification', n);
+  }
+
   handle(ctx: NotificationContext, event: StreamEvent): void {
     const ts = Date.now();
     const sessionId = ctx.sessionId;

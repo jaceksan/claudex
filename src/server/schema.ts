@@ -99,4 +99,11 @@ export function ensureSchema(db: Database.Database): void {
   addCol('turns', 'turns INTEGER NOT NULL DEFAULT 0');
   addCol('worktree_origin', 'worktree_origin TEXT');
   addCol('worktree_branch', 'worktree_branch TEXT');
+
+  // Additive topic columns — guarded by PRAGMA check so ensureSchema stays idempotent
+  const topicCols = (db.prepare("PRAGMA table_info(topic)").all() as { name: string }[]).map((c) => c.name);
+  const addTopicCol = (col: string, ddl: string) => {
+    if (!topicCols.includes(col)) db.exec(`ALTER TABLE topic ADD COLUMN ${ddl}`);
+  };
+  addTopicCol('watch_ci', 'watch_ci INTEGER NOT NULL DEFAULT 0');
 }
