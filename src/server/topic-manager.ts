@@ -132,4 +132,46 @@ export class TopicManager {
   async discardAttempt(sessionId: string) {
     this.d.tasks.markDiscarded(sessionId);
   }
+
+  async addFixTask(topicId: string, args: {
+    type: 'fix-comments' | 'fix-ci';
+    prompt: string;
+    effort: string;
+    permissionMode: string;
+    label?: string;
+    parentTrigger?: unknown;
+  }) {
+    const topic = this.d.topics.getById(topicId);
+    if (!topic) throw new Error(`topic ${topicId} not found`);
+    const repo = this.d.repos.getById(topic.repoId)!;
+
+    // Valid phases: Open, or Draft when an attempt has been accepted.
+    if (topic.phase !== 'Open' && !(topic.phase === 'Draft' && topic.acceptedAttemptId)) {
+      throw new Error(`cannot add fix task in phase ${topic.phase}`);
+    }
+
+    // Concurrency guard: reject if any attempt/fix-* task is currently running.
+    const running = this.d.tasks.listRunningByTopic(topicId)
+      .filter((t) => t.type === 'attempt' || t.type === 'fix-comments' || t.type === 'fix-ci');
+    if (running.length > 0) {
+      throw new Error(`cannot add fix task: another task (${running[0].type}) is already running`);
+    }
+
+    const session = await this.d.spawnSession({
+      cwd: repo.path,
+      label: args.label ?? args.type,
+      prompt: args.prompt,
+      effort: args.effort,
+      permissionMode: args.permissionMode,
+    });
+    const childBranch = `${topic.topicBranch}__fix-${session.id.slice(0, 6)}`;
+    const wt = this.d.createWorktree(repo.path, session.id, { branch: childBranch, base: topic.topicBranch! });
+    this.d.db.prepare('UPDATE sessions SET cwd=? WHERE id=?').run(wt.path, session.id);
+    return this.d.tasks.create({
+      sessionId: session.id, topicId, type: args.type,
+      label: args.label ?? args.type,
+      childBranch, worktreePath: wt.path,
+      parentTrigger: args.parentTrigger,
+    });
+  }
 }

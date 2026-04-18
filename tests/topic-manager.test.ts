@@ -160,3 +160,163 @@ describe('TopicManager.create', () => {
     await expect(mgr.acceptAttempt(freeTasks[0].sessionId)).rejects.toThrow(/not an attempt task/);
   });
 });
+
+describe('TopicManager.addFixTask', () => {
+  let db: Database.Database; let repos: RepoStore; let topics: TopicStore; let tasks: TaskStore;
+  let mgr: TopicManager;
+  let sessionCounter: number;
+
+  function makeRepo() {
+    return repos.register({
+      path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin',
+      defaultBranch: 'main',
+    });
+  }
+
+  beforeEach(() => {
+    db = new Database(':memory:'); ensureSchema(db);
+    repos = new RepoStore(db); topics = new TopicStore(db); tasks = new TaskStore(db);
+    sessionCounter = 0;
+    mgr = new TopicManager({
+      db, repos, topics, tasks,
+      git: async () => '',
+      createWorktree: (_cwd, id, opts) => ({ path: `/tmp/wt/${id}`, origin: '/tmp/r', branch: opts.branch }),
+      spawnSession: async ({ cwd, label, prompt }) => {
+        const id = `sess_${++sessionCounter}`;
+        db.prepare("INSERT INTO sessions (id, cwd, label, status, created_at, last_event_at) VALUES (?,?,?,'running',?,?)")
+          .run(id, cwd, label ?? null, Date.now(), Date.now());
+        return { id };
+      },
+      now: () => 1700000000000,
+      githubLogin: async () => 'jaceksan',
+    });
+  });
+
+  async function createOpenTopic() {
+    const repo = makeRepo();
+    // Create a Draft topic with an accepted attempt — simulates Open state after PR opened.
+    const { topic, task } = await mgr.create({
+      repoId: repo.id, template: 'standard',
+      title: 'My feature', ticketKey: 'T-1',
+      firstTask: { prompt: 'start', effort: 'medium', permissionMode: 'acceptEdits' },
+    });
+    // Mark the session idle so acceptAttempt doesn't trip over running-task guard.
+    db.prepare("UPDATE sessions SET status='idle' WHERE id=?").run(task.sessionId);
+    await mgr.acceptAttempt(task.sessionId);
+    // Force topic to Open phase (as would happen when PR is opened).
+    db.prepare("UPDATE topic SET phase='Open' WHERE id=?").run(topic.id);
+    const updatedTopic = topics.getById(topic.id)!;
+    return { repo, topic: updatedTopic, attemptTask: task };
+  }
+
+  it('throws when topic is in an invalid phase (e.g. Merged)', async () => {
+    const repo = makeRepo();
+    const { topic } = await mgr.create({
+      repoId: repo.id, template: 'standard',
+      title: 'My feature',
+      firstTask: { effort: 'medium', permissionMode: 'acceptEdits' },
+    });
+    db.prepare("UPDATE topic SET phase='Merged' WHERE id=?").run(topic.id);
+    await expect(mgr.addFixTask(topic.id, {
+      type: 'fix-comments', prompt: 'fix it', effort: 'low', permissionMode: 'acceptEdits',
+    })).rejects.toThrow(/cannot add fix task in phase Merged/);
+  });
+
+  it('throws when topic is Draft without an accepted attempt', async () => {
+    const repo = makeRepo();
+    const { topic } = await mgr.create({
+      repoId: repo.id, template: 'standard',
+      title: 'My feature',
+      firstTask: { effort: 'medium', permissionMode: 'acceptEdits' },
+    });
+    // Topic is Draft with no accepted attempt.
+    await expect(mgr.addFixTask(topic.id, {
+      type: 'fix-comments', prompt: 'fix it', effort: 'low', permissionMode: 'acceptEdits',
+    })).rejects.toThrow(/cannot add fix task in phase Draft/);
+  });
+
+  it('happy path on Open phase: spawns session, creates worktree, updates cwd, creates task row', async () => {
+    const { topic } = await createOpenTopic();
+    const fixTask = await mgr.addFixTask(topic.id, {
+      type: 'fix-comments', prompt: 'address review', effort: 'low', permissionMode: 'acceptEdits',
+      label: 'review-fix', parentTrigger: { threadIds: ['t1'] },
+    });
+
+    expect(fixTask.type).toBe('fix-comments');
+    expect(fixTask.topicId).toBe(topic.id);
+    expect(fixTask.label).toBe('review-fix');
+    expect(fixTask.childBranch).toMatch(/^.*__fix-/);
+    expect(fixTask.worktreePath).toMatch(/^\/tmp\/wt\//);
+    expect(fixTask.parentTrigger).toEqual({ threadIds: ['t1'] });
+
+    // Verify the session's cwd was updated to worktree path.
+    const row = db.prepare('SELECT cwd FROM sessions WHERE id=?').get(fixTask.sessionId) as { cwd: string };
+    expect(row.cwd).toBe(fixTask.worktreePath);
+  });
+
+  it('happy path on Draft phase with accepted attempt', async () => {
+    const repo = makeRepo();
+    const { topic, task } = await mgr.create({
+      repoId: repo.id, template: 'standard',
+      title: 'My feature', ticketKey: 'T-2',
+      firstTask: { prompt: 'start', effort: 'medium', permissionMode: 'acceptEdits' },
+    });
+    db.prepare("UPDATE sessions SET status='idle' WHERE id=?").run(task.sessionId);
+    await mgr.acceptAttempt(task.sessionId);
+    const updatedTopic = topics.getById(topic.id)!;
+    expect(updatedTopic.acceptedAttemptId).toBeTruthy();
+
+    const fixTask = await mgr.addFixTask(topic.id, {
+      type: 'fix-ci', prompt: 'fix CI', effort: 'low', permissionMode: 'acceptEdits',
+    });
+    expect(fixTask.type).toBe('fix-ci');
+    expect(fixTask.childBranch).toContain('__fix-');
+  });
+
+  it('concurrency guard: throws if another fix-* task is running for the same topic', async () => {
+    const { topic } = await createOpenTopic();
+
+    // Create first fix task (session stays 'running').
+    await mgr.addFixTask(topic.id, {
+      type: 'fix-comments', prompt: 'first fix', effort: 'low', permissionMode: 'acceptEdits',
+    });
+
+    // Attempt to create a second fix task while the first session is still running.
+    await expect(mgr.addFixTask(topic.id, {
+      type: 'fix-ci', prompt: 'second fix', effort: 'low', permissionMode: 'acceptEdits',
+    })).rejects.toThrow(/another task.*is already running/);
+  });
+
+  it('concurrency guard: allows fix task when prior fix task session is idle (not running)', async () => {
+    const { topic } = await createOpenTopic();
+
+    const firstFix = await mgr.addFixTask(topic.id, {
+      type: 'fix-comments', prompt: 'first fix', effort: 'low', permissionMode: 'acceptEdits',
+    });
+    // Mark the session as idle/done.
+    db.prepare("UPDATE sessions SET status='idle' WHERE id=?").run(firstFix.sessionId);
+
+    // Now another fix task should be allowed.
+    const secondFix = await mgr.addFixTask(topic.id, {
+      type: 'fix-ci', prompt: 'second fix', effort: 'low', permissionMode: 'acceptEdits',
+    });
+    expect(secondFix.type).toBe('fix-ci');
+  });
+
+  it('concurrency guard: throws if a running attempt task exists for the topic', async () => {
+    const repo = makeRepo();
+    const { topic } = await mgr.create({
+      repoId: repo.id, template: 'standard',
+      title: 'My feature',
+      firstTask: { effort: 'medium', permissionMode: 'acceptEdits' },
+    });
+    // Force topic to Open phase with acceptedAttemptId set (fake it).
+    db.prepare("UPDATE topic SET phase='Open', accepted_attempt_id='fake' WHERE id=?").run(topic.id);
+    const updatedTopic = topics.getById(topic.id)!;
+
+    // The original attempt session is still 'running' — guard should trigger.
+    await expect(mgr.addFixTask(updatedTopic.id, {
+      type: 'fix-comments', prompt: 'fix', effort: 'low', permissionMode: 'acceptEdits',
+    })).rejects.toThrow(/another task.*is already running/);
+  });
+});

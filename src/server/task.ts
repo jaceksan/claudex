@@ -56,6 +56,18 @@ export class TaskStore {
     const info = this.db.prepare('UPDATE task SET triage_result=? WHERE session_id=?').run(JSON.stringify(triage), sessionId);
     if (info.changes === 0) throw new Error(`task ${sessionId} not found`);
   }
+  /** Return tasks for a topic whose session is currently running and not yet accepted/discarded. */
+  listRunningByTopic(topicId: string): Task[] {
+    const rows = this.db.prepare(`
+      SELECT t.* FROM task t
+      JOIN sessions s ON s.id = t.session_id
+      WHERE t.topic_id=?
+        AND s.status='running'
+        AND t.accepted_at IS NULL
+        AND t.discarded_at IS NULL
+    `).all(topicId) as Record<string, unknown>[];
+    return rows.map((r) => this.hydrate(r));
+  }
   private hydrate(r: Record<string, unknown>): Task {
     return {
       sessionId: r.session_id as string, topicId: r.topic_id as string,
