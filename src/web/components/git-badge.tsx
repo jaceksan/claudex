@@ -46,12 +46,11 @@ export function GitBadge({ info, compact = false }: { info: GitInfo | null; comp
         </span>
       )}
       {info.lastCommit && (
-        <span className="truncate max-w-md text-zinc-500" title={info.lastCommit.subject}>
-          <span className="font-mono text-zinc-400">{info.lastCommit.sha}</span> {info.lastCommit.subject} <span className="text-zinc-600">· {info.lastCommit.relative}</span>
+        <span className="truncate max-w-md text-zinc-500" title={`${info.lastCommit.sha} · ${info.lastCommit.subject}`}>
+          <span className="font-mono text-zinc-400">{info.lastCommit.sha}</span>
+          <span className="ml-2">{info.lastCommit.subject}</span>
+          <span className="ml-2 text-zinc-600">{info.lastCommit.relative}</span>
         </span>
-      )}
-      {info.remote && (
-        <span className="text-zinc-500">{info.remote.owner}/{info.remote.repo}</span>
       )}
       {info.pr && (
         <a
