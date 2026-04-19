@@ -50,9 +50,22 @@ export function CiPanel({
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 flex items-center gap-2">
           CI Checks
-          {(loading || anyRunning) && (
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" title={loading ? 'Loading…' : 'Some checks still running'} />
-          )}
+          {(() => {
+            // Three states for the status dot next to the header:
+            //   loading / running  → amber, pulsing
+            //   any failure        → red, solid
+            //   all done + ok      → green, solid (so users have a clear "pipeline finished OK" signal)
+            if (loading || anyRunning) {
+              return <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" title={loading ? 'Loading…' : 'Some checks still running'} />;
+            }
+            if (failing.length > 0) {
+              return <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500" title="CI failing" />;
+            }
+            if (checks.length > 0) {
+              return <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" title="All checks finished — passing" />;
+            }
+            return null;
+          })()}
         </h2>
         <div className="flex items-center gap-2">
           <RollupBadge rollup={rollup} anyRunning={anyRunning} />
@@ -151,13 +164,14 @@ export function CiPanel({
 }
 
 function RollupBadge({ rollup, anyRunning }: { rollup: 'passing' | 'failing' | 'pending'; anyRunning: boolean }) {
-  if (rollup === 'passing') return <span className="text-xs text-emerald-400">✓ Required passing</span>;
+  if (rollup === 'passing') return <span className="text-xs text-emerald-400">✓ All required passing</span>;
   if (rollup === 'failing') return <span className="text-xs text-red-400">✗ CI failing</span>;
   return <span className="text-xs text-amber-400">{anyRunning ? '▶ Running' : '⋯ Pending'}</span>;
 }
 
 function CheckIcon({ conclusion }: { conclusion: Check['conclusion'] }) {
   if (conclusion === 'success') return <span className="text-emerald-600">✓</span>;
-  if (conclusion === 'failure') return <span className="text-red-600">✗</span>;
+  if (conclusion === 'failure' || conclusion === 'timed_out') return <span className="text-red-600">✗</span>;
+  if (conclusion === 'skipped' || conclusion === 'cancelled') return <span className="text-zinc-600">⊘</span>;
   return <span className="text-zinc-600">○</span>;
 }

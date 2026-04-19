@@ -150,29 +150,9 @@ export function ActionBar({
         </button>
       )}
 
-      {actions.merge && (
-        <button
-          type="button"
-          onClick={() => {
-            // Merge calls pr-lifecycle mergePR — placeholder stub for Plan 4.
-            alert('Merge: real action wired in Plan 4 (gh/glab adapter call).');
-          }}
-          className="rounded bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-600"
-        >
-          Merge
-        </button>
-      )}
-
-      {!actions.merge && topic.phase === 'Open' && (
-        <button
-          type="button"
-          disabled
-          title={!hasApprovalAndGreen(pr, checks, required) ? 'Needs approval / CI' : 'Resolve conflicts first'}
-          className="cursor-not-allowed rounded bg-zinc-800 px-3 py-1.5 text-sm font-medium text-zinc-500"
-        >
-          Merge
-        </button>
-      )}
+      {/* Merge button removed: in almost every team with compliance, the PR
+          author can't merge their own PR, so a local Merge button was
+          misleading. Merging happens on the VCS side by a reviewer. */}
 
       {actions.addAttempt && (
         <button
@@ -218,10 +198,3 @@ export function ActionBar({
   );
 }
 
-function hasApprovalAndGreen(pr: PR | undefined, checks: Check[] | undefined, required: string[] | undefined): boolean {
-  if (!pr) return false;
-  const hasApprovals = pr.approvalsCount >= pr.requiredApprovals;
-  const allGreen = (required ?? []).length > 0 &&
-    (checks ?? []).filter((c) => (required ?? []).includes(c.name)).every((c) => c.conclusion === 'success');
-  return hasApprovals && allGreen;
-}
