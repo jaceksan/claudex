@@ -16,8 +16,19 @@ export interface GitInfo {
   pr?: { number: number; title: string; state: string; url: string; checks?: { passing: number; failing: number; pending: number } };
 }
 
-async function git(cwd: string, args: string[], timeoutMs = 2000): Promise<string> {
-  const { stdout } = await exec('git', args, { cwd, timeout: timeoutMs, maxBuffer: 1024 * 1024 });
+async function git(cwd: string, args: string[], timeoutMs = 10_000): Promise<string> {
+  // GIT_OPTIONAL_LOCKS=0 prevents status/rev-list probes from taking
+  // .git/index.lock on large repos; if the lock is held by Claude's own
+  // git command, status degrades gracefully instead of racing and (on
+  // timeout) leaving a stale lock behind. 2s was too tight for big repos
+  // refreshing a cold index — bumped to 10s so Node no longer SIGKILLs
+  // git mid-lock-hold.
+  const { stdout } = await exec('git', args, {
+    cwd,
+    timeout: timeoutMs,
+    maxBuffer: 1024 * 1024,
+    env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
+  });
   return stdout;
 }
 

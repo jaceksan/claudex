@@ -158,16 +158,35 @@ export default function SessionPage({ id }: { id: string }) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [events.length, streaming]);
 
-  const [git, refreshGit] = useGitInfo(state?.sessionId, 10_000);
-  const [taskCtx, refreshTaskCtx] = useTaskContext(state?.sessionId, 10_000);
+  // Pause our server-side git probes while Claude is mid-turn. Our probes
+  // (`git status --porcelain`, fetch /api/sessions/:id/git, task-context
+  // reconcile) can race with Claude's own git commands and — if our probe
+  // gets SIGKILLed by the node timeout mid-lock-hold — leave a stale
+  // index.lock behind that Claude's next git commit then bounces off.
+  const busy = state?.status === 'running' || state?.status === 'starting' || state?.status === 'waiting-permission';
+  const [git, refreshGit] = useGitInfo(state?.sessionId, 10_000, busy);
+  const [taskCtx, refreshTaskCtx] = useTaskContext(state?.sessionId, 10_000, busy);
 
   // Refresh worktree state (dirty / ahead) whenever Claude emits a new event —
   // that's the strongest signal that files on disk may have changed. Debounce so
   // bursts of stream-json events collapse into a single fetch.
   useEffect(() => {
+    if (busy) return;
     const t = setTimeout(() => { refreshGit(); refreshTaskCtx(); }, 250);
     return () => clearTimeout(t);
-  }, [events.length, refreshGit, refreshTaskCtx]);
+  }, [events.length, refreshGit, refreshTaskCtx, busy]);
+
+  // Kick one refresh the moment Claude transitions busy → idle, so the button
+  // set updates immediately after the turn ends without waiting for the next
+  // 10s poll tick.
+  const prevBusyRef = useRef(busy);
+  useEffect(() => {
+    if (prevBusyRef.current && !busy) {
+      refreshGit();
+      refreshTaskCtx();
+    }
+    prevBusyRef.current = busy;
+  }, [busy, refreshGit, refreshTaskCtx]);
 
   // After a task action, poke the server-side git state a couple of times so
   // the button set updates immediately without waiting for the 10s poll.
@@ -259,15 +278,11 @@ export default function SessionPage({ id }: { id: string }) {
             - Merge to topic / Apply fix: only when the worktree is clean AND the
               task branch is ahead of the topic branch (nothing to merge otherwise).
             - Discard task: always available — it's the escape hatch. */}
-      {taskCtx && taskCtx.task.type !== 'delivery' && !taskCtx.task.acceptedAt && !taskCtx.task.discardedAt && (() => {
+      {taskCtx && taskCtx.task.type !== 'delivery' && !taskCtx.task.acceptedAt && !taskCtx.task.discardedAt && !busy && (() => {
         const d = git?.dirty;
         const isDirty = !!d && (d.staged + d.unstaged + d.untracked > 0);
         const ahead = taskCtx.aheadTopic;
         const canMerge = !isDirty && ahead > 0;
-        // Hide all buttons while Claude is mid-turn: user's Save/Merge prompts
-        // would queue behind the current one and the effect wouldn't be immediate.
-        const busy = state?.status === 'running' || state?.status === 'starting' || state?.status === 'waiting-permission';
-        if (busy) return null;
         return (
           <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
             {isDirty && (
