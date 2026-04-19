@@ -1,36 +1,71 @@
 import { useState } from 'react';
 import type { Check } from '../../server/vcs/adapter';
 
+/**
+ * Sort-order for advisory checks: ran-and-finished first (success then
+ * failure/timeout/neutral), then still-running, then skipped/cancelled last.
+ * Users care about "did something happen?" — skipped rows at the bottom.
+ */
+function checkOrder(c: Check): number {
+  if (c.status !== 'completed') return 2;                 // running/queued
+  if (c.conclusion === 'skipped' || c.conclusion === 'cancelled') return 3;
+  if (c.conclusion === 'success') return 0;               // green first
+  return 1;                                               // failure/timeout/neutral
+}
+
 export function CiPanel({
   checks,
   required,
   watchEnabled,
+  loading,
   onFix,
   onWatchToggle,
+  onRefresh,
 }: {
   checks: Check[];
   required: string[];
   watchEnabled: boolean;
+  loading?: boolean;
   onFix: (checkName: string) => void;
   onWatchToggle: (enable: boolean) => void;
+  onRefresh?: () => void;
 }) {
   const [showAdvisory, setShowAdvisory] = useState(false);
 
   const requiredChecks = checks.filter((c) => required.includes(c.name));
-  const advisoryChecks = checks.filter((c) => !required.includes(c.name));
+  const advisoryChecks = checks
+    .filter((c) => !required.includes(c.name))
+    .slice()
+    .sort((a, b) => checkOrder(a) - checkOrder(b) || a.name.localeCompare(b.name));
 
   const failing = requiredChecks.filter((c) => c.conclusion === 'failure');
   const passing = requiredChecks.filter((c) => c.conclusion === 'success');
-  const pending = requiredChecks.filter((c) => c.conclusion === null || c.status !== 'completed');
+  const pending = requiredChecks.filter((c) => c.status !== 'completed');
 
+  const anyRunning = checks.some((c) => c.status === 'in_progress' || c.status === 'queued');
   const rollup = failing.length > 0 ? 'failing' : pending.length > 0 ? 'pending' : 'passing';
 
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">CI Checks</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 flex items-center gap-2">
+          CI Checks
+          {(loading || anyRunning) && (
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" title={loading ? 'Loading…' : 'Some checks still running'} />
+          )}
+        </h2>
         <div className="flex items-center gap-2">
-          <RollupBadge rollup={rollup} />
+          <RollupBadge rollup={rollup} anyRunning={anyRunning} />
+          {onRefresh && (
+            <button
+              type="button"
+              onClick={onRefresh}
+              className="rounded border border-zinc-700 px-2 py-0.5 text-xs text-zinc-400 hover:border-zinc-500"
+              title="Re-poll CI now"
+            >
+              ↻
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onWatchToggle(!watchEnabled)}
@@ -47,7 +82,9 @@ export function CiPanel({
       </div>
 
       {requiredChecks.length === 0 && checks.length === 0 && (
-        <div className="text-xs text-zinc-500">No checks found.</div>
+        <div className="text-xs text-zinc-500">
+          {loading ? 'Waiting for first check results from the provider…' : 'No checks found.'}
+        </div>
       )}
 
       {failing.length > 0 && (
@@ -79,8 +116,11 @@ export function CiPanel({
 
       {pending.map((c) => (
         <div key={c.name} className="flex items-center gap-2 px-2 py-1 text-xs text-zinc-500">
-          <span className="text-amber-500">⋯</span>
+          <span className={c.status === 'in_progress' ? 'text-amber-400 animate-pulse' : 'text-amber-500'}>
+            {c.status === 'in_progress' ? '▶' : '⋯'}
+          </span>
           <span className="font-mono">{c.name}</span>
+          <span className="ml-auto text-[10px] text-zinc-600">{c.status === 'in_progress' ? 'running' : c.status}</span>
         </div>
       ))}
 
@@ -110,10 +150,10 @@ export function CiPanel({
   );
 }
 
-function RollupBadge({ rollup }: { rollup: 'passing' | 'failing' | 'pending' }) {
+function RollupBadge({ rollup, anyRunning }: { rollup: 'passing' | 'failing' | 'pending'; anyRunning: boolean }) {
   if (rollup === 'passing') return <span className="text-xs text-emerald-400">✓ Required passing</span>;
   if (rollup === 'failing') return <span className="text-xs text-red-400">✗ CI failing</span>;
-  return <span className="text-xs text-amber-400">⋯ Pending</span>;
+  return <span className="text-xs text-amber-400">{anyRunning ? '▶ Running' : '⋯ Pending'}</span>;
 }
 
 function CheckIcon({ conclusion }: { conclusion: Check['conclusion'] }) {

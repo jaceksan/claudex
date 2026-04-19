@@ -55,6 +55,8 @@ export class PrLifecycle {
       git: (args: string[], cwd?: string) => Promise<string>;
       topicManager: FixTaskAdder;
       notifications?: CiNotifier;
+      /** Called after any PR-related state change so the hub can re-broadcast the topic detail. */
+      onTopicChanged?: (topicId: string) => void;
       /** Override setInterval for tests. Defaults to global setInterval. */
       setInterval?: typeof setInterval;
       /** Override clearInterval for tests. Defaults to global clearInterval. */
@@ -77,6 +79,10 @@ export class PrLifecycle {
     const body = args.body ?? (repo.prBodyTemplate ?? defaultBody(topic));
     const pr = await adapter.createPR({ cwd: repo.path, base: repo.defaultBranch, head: topic.topicBranch, title, body });
     this.deps.topics.setPhase(topicId, 'Open', { prNumber: pr.number });
+
+    // Notify subscribers so the topic page can show the new prNumber / PR link
+    // without waiting for the first CI poll tick.
+    this.deps.onTopicChanged?.(topicId);
 
     // Auto-enable CI watch after creating a PR.
     await this.watchCi(topicId, true);
@@ -119,6 +125,9 @@ export class PrLifecycle {
       await this._pollCi(topicId, repo.path, topic.prNumber!, repo.defaultBranch, prevState, (curr) => {
         prevState = curr;
       });
+      // Fresh checks data in prCache; re-broadcast so CI panel on the topic
+      // page updates without needing the user to navigate away and back.
+      this.deps.onTopicChanged?.(topicId);
     };
 
     // Do an initial poll immediately so we have a baseline state.

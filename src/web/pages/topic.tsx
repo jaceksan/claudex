@@ -15,14 +15,18 @@ export default function TopicPage({ id }: { id: string }) {
   const [, navigate] = useLocation();
   const [showAddAttempt, setShowAddAttempt] = useState(false);
   const [error, setError] = useState<{ ctx: string; message: string } | null>(null);
+  const [creatingPR, setCreatingPR] = useState(false);
 
   useEffect(() => {
     return subscribe((m) => {
       if (m.type === 'server.topic.error') {
         setError({ ctx: m.payload.ctx ?? 'action', message: m.payload.message });
+        if (m.payload.ctx === 'createPR') setCreatingPR(false);
       } else if (m.type === 'server.topic.detail' && m.payload.topicId === id) {
         // Fresh detail arrived → stale error probably no longer relevant.
         setError(null);
+        // If the PR just landed, turn the "creating" hint off.
+        if (m.payload.pr) setCreatingPR(false);
       }
     });
   }, [id]);
@@ -53,7 +57,12 @@ export default function TopicPage({ id }: { id: string }) {
     send({ type: 'client.topic.push', payload: { topicId: id } });
   }
   function handleCreatePR(title?: string, body?: string) {
+    setCreatingPR(true);
     send({ type: 'client.pr.create', payload: { topicId: id, title, body } });
+  }
+  function handleRefreshCI() {
+    // Re-subscribe forces the server to rebuild + push fresh detail (incl. CI).
+    send({ type: 'client.topic.subscribe', payload: { topicId: id } });
   }
   function handleAddressFeedback(includeCi: boolean, includeComments: boolean) {
     send({ type: 'client.pr.addressFeedback', payload: { topicId: id, includeCi, includeComments } });
@@ -83,6 +92,12 @@ export default function TopicPage({ id }: { id: string }) {
           <button type="button" onClick={() => setError(null)} className="shrink-0 rounded px-2 py-0.5 text-xs text-red-300 hover:bg-red-900/40">dismiss</button>
         </div>
       )}
+      {creatingPR && !pr && (
+        <div className="flex items-center gap-2 border-b border-blue-500/30 bg-blue-950/30 px-6 py-2 text-sm text-blue-200">
+          <span className="inline-block h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
+          Creating pull request — pushing branch and calling gh…
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-7xl p-4">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -104,13 +119,15 @@ export default function TopicPage({ id }: { id: string }) {
                   onReply={handleReplyThread}
                 />
               )}
-              {pr && (
+              {(pr || creatingPR) && (
                 <CiPanel
                   checks={checks ?? []}
                   required={required ?? []}
                   watchEnabled={topic.watchCi}
+                  loading={creatingPR && !pr}
                   onFix={handleFixCheck}
                   onWatchToggle={handleWatchToggle}
+                  onRefresh={pr ? handleRefreshCI : undefined}
                 />
               )}
             </div>

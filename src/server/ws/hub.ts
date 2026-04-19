@@ -645,4 +645,22 @@ export class WsHub {
       if (ids.has(topicId)) this.send(ws, env);
     }
   }
+
+  /**
+   * Public entrypoint used by backend poll loops (pr-lifecycle CI watcher)
+   * to push fresh topic detail to subscribed clients. Builds the bundle and
+   * sends it to any socket currently subscribed to that topic.
+   */
+  async refreshTopicDetail(topicId: string): Promise<void> {
+    const td = this.topicDeps;
+    if (!td) return;
+    try {
+      const detail = await buildTopicDetail(topicId, td);
+      this.broadcastTopicDetail(topicId, detail);
+      // Also refresh the dashboard summary so task counts / phase tags stay in sync.
+      this.broadcast(buildTopicState(td));
+    } catch (e) {
+      console.error('[hub] refreshTopicDetail error:', e);
+    }
+  }
 }
