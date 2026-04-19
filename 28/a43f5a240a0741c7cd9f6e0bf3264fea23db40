@@ -1,0 +1,27 @@
+src/web/pages/session.tsx
+  7a240c56656ec247 161-177,272,282,295
+src/web/hooks/use-git-info.ts
+  7a240c56656ec247 1,4-7,9,21,24,26-27
+src/web/hooks/use-task-context.ts
+  7a240c56656ec247 1,4-7,9,21,24,26-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "28a43f5a240a0741c7cd9f6e0bf3264fea23db40",
+  "prompts": {
+    "7a240c56656ec247": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28cd815a-90e4-4f16-b2c1-5aacb321a562",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 40,
+      "total_deletions": 12,
+      "accepted_lines": 216,
+      "overriden_lines": 0
+    }
+  }
+}
