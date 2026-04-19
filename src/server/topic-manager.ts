@@ -89,8 +89,13 @@ export class TopicManager {
   async addAttempt(topicId: string, args: { prompt?: string; effort: string; permissionMode: string; label?: string }) {
     const topic = this.d.topics.getById(topicId);
     if (!topic) throw new Error(`topic ${topicId} not found`);
-    if (topic.phase !== 'Draft') throw new Error(`cannot add attempt: phase ${topic.phase}`);
-    if (topic.acceptedAttemptId) throw new Error('cannot add attempt after accept — use fix task');
+    // Attempts are allowed in Draft (before PR) and Open (after PR) — users
+    // often want to iterate on a feature branch with more worktree-isolated
+    // tasks after the PR is already open (each such attempt then gets merged
+    // into the topic branch, which the next push propagates to the PR).
+    if (topic.phase !== 'Draft' && topic.phase !== 'Open') {
+      throw new Error(`cannot add attempt: phase ${topic.phase}`);
+    }
     const repo = this.d.repos.getById(topic.repoId)!;
 
     // Task title is required — it becomes the slug used in the branch and worktree name.

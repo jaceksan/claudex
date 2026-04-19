@@ -146,7 +146,7 @@ describe('TopicManager.create', () => {
     expect(after.discardedAt).not.toBeNull();
   });
 
-  it('addAttempt throws after accept', async () => {
+  it('addAttempt allows follow-up attempts after accept (iterating on the topic branch)', async () => {
     const repo = repos.register({
       path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin',
       defaultBranch: 'main',
@@ -155,10 +155,11 @@ describe('TopicManager.create', () => {
       repoId: repo.id, template: 'standard',
       title: 'My feature',
     });
-    const task = await mgr.addAttempt(topic.id, { label: 'one', effort: 'medium', permissionMode: 'acceptEdits' });
-    await mgr.acceptAttempt(task.sessionId);
-    await expect(mgr.addAttempt(topic.id, { label: 'two', effort: 'medium', permissionMode: 'acceptEdits' }))
-      .rejects.toThrow(/cannot add attempt after accept/);
+    const first = await mgr.addAttempt(topic.id, { label: 'one', effort: 'medium', permissionMode: 'acceptEdits' });
+    await mgr.acceptAttempt(first.sessionId);
+    const follow = await mgr.addAttempt(topic.id, { label: 'two', effort: 'medium', permissionMode: 'acceptEdits' });
+    expect(follow.sessionId).toBeTruthy();
+    expect(follow.childBranch).toBe('jaceksan/my-feature__two');
   });
 
   it('acceptAttempt throws on missing session', async () => {

@@ -59,13 +59,15 @@ function visibleActions(
     };
   }
 
-  // Open phase
+  // Open phase — PR exists, but users still add attempt tasks for further
+  // iteration on the topic branch (each attempt merges to topic, next push
+  // carries it into the PR).
   const canMerge = allRequiredGreen && hasApprovals && !hasUnresolvedComments;
   return {
     createPr: false,
     addressFeedback: hasUnresolvedComments || hasFailingRequired,
     merge: canMerge,
-    addAttempt: false,
+    addAttempt: !hasRunningTask,
   };
 }
 
