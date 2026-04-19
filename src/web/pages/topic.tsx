@@ -147,6 +147,7 @@ export default function TopicPage({ id }: { id: string }) {
         onPush={handlePushTopic}
         deliverable={deliverable}
         deliverySessionStatus={deliverySessionStatus}
+        creatingPR={creatingPR}
       />
       {showAddAttempt && (
         <AddTaskModal topicId={id} onClose={() => setShowAddAttempt(false)} />

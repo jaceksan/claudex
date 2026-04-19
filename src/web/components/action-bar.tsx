@@ -82,6 +82,7 @@ export function ActionBar({
   onPush,
   deliverable,
   deliverySessionStatus,
+  creatingPR = false,
 }: {
   topic: TopicMeta;
   tasks: TaskRow[];
@@ -95,6 +96,7 @@ export function ActionBar({
   onPush: () => void;
   deliverable: Deliverable;
   deliverySessionStatus: string | null;
+  creatingPR?: boolean;
 }) {
   const actions = visibleActions(topic, tasks, pr, threads, checks, required);
 
@@ -113,21 +115,25 @@ export function ActionBar({
 
   return (
     <div className="border-t border-zinc-800 bg-zinc-950 px-4 py-3 flex items-center gap-3 flex-wrap">
-      {actions.createPr && (
-        <button
-          type="button"
-          onClick={() => onCreatePR()}
-          disabled={!!actions.createPrDisabledReason}
-          title={actions.createPrDisabledReason}
-          className={`rounded px-3 py-1.5 text-sm font-medium ${
-            actions.createPrDisabledReason
-              ? 'cursor-not-allowed bg-zinc-800 text-zinc-500'
-              : 'bg-blue-600 text-white hover:bg-blue-500'
-          }`}
-        >
-          Create PR
-        </button>
-      )}
+      {actions.createPr && (() => {
+        const disabled = !!actions.createPrDisabledReason || creatingPR;
+        const reason = creatingPR ? 'PR creation in progress — wait for Claude to finish' : actions.createPrDisabledReason;
+        return (
+          <button
+            type="button"
+            onClick={() => onCreatePR()}
+            disabled={disabled}
+            title={reason}
+            className={`rounded px-3 py-1.5 text-sm font-medium ${
+              disabled
+                ? 'cursor-not-allowed bg-zinc-800 text-zinc-500'
+                : 'bg-blue-600 text-white hover:bg-blue-500'
+            }`}
+          >
+            {creatingPR ? 'Creating PR…' : 'Create PR'}
+          </button>
+        );
+      })()}
       {actions.createPrDisabledReason && (
         <span className="text-xs text-zinc-500">{actions.createPrDisabledReason}</span>
       )}
