@@ -158,8 +158,23 @@ export default function SessionPage({ id }: { id: string }) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [events.length, streaming]);
 
-  const git = useGitInfo(state?.sessionId, 10_000);
-  const taskCtx = useTaskContext(state?.sessionId, 10_000);
+  const [git, refreshGit] = useGitInfo(state?.sessionId, 10_000);
+  const [taskCtx, refreshTaskCtx] = useTaskContext(state?.sessionId, 10_000);
+
+  // Refresh worktree state (dirty / ahead) whenever Claude emits a new event —
+  // that's the strongest signal that files on disk may have changed. Debounce so
+  // bursts of stream-json events collapse into a single fetch.
+  useEffect(() => {
+    const t = setTimeout(() => { refreshGit(); refreshTaskCtx(); }, 250);
+    return () => clearTimeout(t);
+  }, [events.length, refreshGit, refreshTaskCtx]);
+
+  // After a task action, poke the server-side git state a couple of times so
+  // the button set updates immediately without waiting for the 10s poll.
+  const refreshSoon = () => {
+    setTimeout(() => { refreshGit(); refreshTaskCtx(); }, 100);
+    setTimeout(() => { refreshGit(); refreshTaskCtx(); }, 700);
+  };
   const copy = (text: string) => { navigator.clipboard?.writeText(text).catch(() => {}); };
   const claudeId = state?.claudeSessionId;
   const rename = () => {
@@ -254,7 +269,7 @@ export default function SessionPage({ id }: { id: string }) {
             {isDirty && (
               <button
                 type="button"
-                onClick={() => send({ type: 'client.task.save', payload: { sessionId: id } })}
+                onClick={() => { send({ type: 'client.task.save', payload: { sessionId: id } }); refreshSoon(); }}
                 className="rounded bg-blue-700 px-2 py-0.5 text-[11px] text-white hover:bg-blue-600"
                 title="Commit uncommitted changes in this worktree"
               >
@@ -264,7 +279,7 @@ export default function SessionPage({ id }: { id: string }) {
             {canMerge && (
               <button
                 type="button"
-                onClick={() => send({ type: 'client.task.merge', payload: { sessionId: id } })}
+                onClick={() => { send({ type: 'client.task.merge', payload: { sessionId: id } }); refreshSoon(); }}
                 className="rounded bg-emerald-700 px-2 py-0.5 text-[11px] text-white hover:bg-emerald-600"
                 title={`Merge ${ahead} commit${ahead === 1 ? '' : 's'} into the topic branch`}
               >
@@ -277,6 +292,7 @@ export default function SessionPage({ id }: { id: string }) {
                 onClick={() => {
                   if (confirm('Drop all uncommitted changes? Commits are kept.')) {
                     send({ type: 'client.task.discardChanges', payload: { sessionId: id } });
+                    refreshSoon();
                   }
                 }}
                 className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300 hover:border-amber-600 hover:text-amber-400"
