@@ -259,7 +259,7 @@ export default function SessionPage({ id }: { id: string }) {
             - Merge to topic / Apply fix: only when the worktree is clean AND the
               task branch is ahead of the topic branch (nothing to merge otherwise).
             - Discard task: always available — it's the escape hatch. */}
-      {taskCtx && !taskCtx.task.acceptedAt && !taskCtx.task.discardedAt && (() => {
+      {taskCtx && taskCtx.task.type !== 'delivery' && !taskCtx.task.acceptedAt && !taskCtx.task.discardedAt && (() => {
         const d = git?.dirty;
         const isDirty = !!d && (d.staged + d.unstaged + d.untracked > 0);
         const ahead = taskCtx.aheadTopic;

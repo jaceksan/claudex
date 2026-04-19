@@ -49,6 +49,22 @@ export class GitHubAdapter implements VcsAdapter {
     };
   }
 
+  /**
+   * Find an existing open PR whose head branch matches `branch`. Returns the
+   * PR number or null if none found. Used to detect PRs that Claude opens
+   * via `gh pr create` from inside a delivery session (so the server can
+   * capture the PR number and wire up CI watching without parsing stdout).
+   */
+  async findPrByHead(cwd: string, branch: string): Promise<number | null> {
+    try {
+      const out = await this.gh(['pr', 'list', '--head', branch, '--state', 'open', '--json', 'number', '--limit', '1'], cwd);
+      const j = JSON.parse(out) as Array<{ number: number }>;
+      return j.length > 0 ? j[0].number : null;
+    } catch {
+      return null;
+    }
+  }
+
   async createPR(input: { cwd: string; base: string; head: string; title: string; body: string }): Promise<PR> {
     // `gh pr create` does not support --json; it prints the new PR URL on
     // stdout. Parse the number out of the URL, then fetch the full PR record

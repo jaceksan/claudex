@@ -15,7 +15,7 @@ import type Database from 'better-sqlite3';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { isEffortLevel } from '../session/state.js';
-import { savePrompt, mergePrompt, pushPrompt } from './task-prompts.js';
+import { savePrompt, mergePrompt, pushPrompt, openPrPrompt } from './task-prompts.js';
 
 const execFileP = promisify(execFile);
 
@@ -546,13 +546,45 @@ export class WsHub {
         case 'client.pr.create': {
           const td = this.topicDeps;
           if (!td) return this.sendError(ws, 'topic support not initialised');
-          if (!td.prLifecycle) return this.sendError(ws, 'PR lifecycle not initialised');
           const { topicId, title, body } = env.payload;
-          td.prLifecycle.createPR(topicId, { title, body }).then(async () => {
+          (async () => {
+            const topic = td.topics.getById(topicId);
+            if (!topic) throw new Error('topic not found');
+            if (!topic.topicBranch) throw new Error('topic has no branch');
+            if (topic.phase !== 'Draft') throw new Error(`cannot create PR in phase ${topic.phase}`);
+            const repo = td.repos.getById(topic.repoId)!;
+
+            const { sessionId, spawned } = await td.topicManager.ensureDeliverySession(topicId);
             this.broadcast(buildTopicState(td));
             const detail = await buildTopicDetail(topicId, td);
             this.broadcastTopicDetail(topicId, detail);
-          }).catch((e: Error) => {
+
+            // Fresh stream-json subprocesses stay silent until stdin (CLAUDE.md §5),
+            // so give Claude a moment to reach idle before sending the prompt.
+            if (spawned) await new Promise((r) => setTimeout(r, 250));
+
+            const h = this.manager.get(sessionId);
+            if (!h) throw new Error('Delivery session vanished before prompt could be sent.');
+            if (h.state.status === 'running' || h.state.status === 'starting') {
+              throw new Error('Delivery session is busy — wait until idle and try again.');
+            }
+            h.send(openPrPrompt({
+              topicBranch: topic.topicBranch,
+              topicTitle: topic.title,
+              ticketKey: topic.ticketKey,
+              forkRemote: repo.forkRemote,
+              defaultBranch: repo.defaultBranch,
+              suggestedTitle: title,
+              suggestedBody: body,
+            }));
+
+            // Fire-and-forget: watch gh for the new PR so topic.prNumber gets set.
+            if (td.prLifecycle) {
+              void td.prLifecycle.pollForPrNumber(topicId).catch((e) =>
+                console.error('[pollForPrNumber] error:', e),
+              );
+            }
+          })().catch((e: Error) => {
             this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'createPR' } });
           });
           break;

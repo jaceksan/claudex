@@ -56,6 +56,8 @@ export interface VcsAdapter {
     body: string;
   }): Promise<PR>;
   getPR(cwd: string, number: number): Promise<PR>;
+  /** Return the PR number of an open PR on `branch`, or null if none. */
+  findPrByHead(cwd: string, branch: string): Promise<number | null>;
   mergePR(cwd: string, number: number, strategy: 'squash' | 'merge' | 'rebase'): Promise<void>;
   listReviewThreads(cwd: string, number: number): Promise<ReviewThread[]>;
   replyOnThread(cwd: string, threadId: string, body: string): Promise<void>;

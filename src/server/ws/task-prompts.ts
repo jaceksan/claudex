@@ -51,6 +51,33 @@ export function mergePrompt(args: {
   ].join('\n\n');
 }
 
+export function openPrPrompt(args: {
+  topicBranch: string;
+  topicTitle: string;
+  ticketKey: string | null;
+  forkRemote: string;
+  defaultBranch: string;
+  suggestedTitle?: string;
+  suggestedBody?: string;
+}): string {
+  const ctx = args.ticketKey ? `${args.ticketKey} — ${args.topicTitle}` : args.topicTitle;
+  const lines = [
+    `Please open a pull request for this topic.`,
+    `Context:`,
+    `- topic: "${ctx}"`,
+    `- head branch: ${args.topicBranch}`,
+    `- base branch: ${args.defaultBranch}`,
+    `- remote: ${args.forkRemote}`,
+    `Before creating the PR, make sure the branch is pushed (\`git push --set-upstream ${args.forkRemote} ${args.topicBranch}\`).`,
+    `Write the PR title and body according to this repository's conventions — look at recent merged PRs in this repo, the repo's PR template, and any instructions you find.`,
+  ];
+  if (args.suggestedTitle) lines.push(`User-suggested title (refine or replace per conventions): ${args.suggestedTitle}`);
+  if (args.suggestedBody) lines.push(`User-suggested body:\n${args.suggestedBody}`);
+  lines.push(RULE_PRECEDENCE);
+  lines.push(`Typical command: \`gh pr create --base ${args.defaultBranch} --head ${args.topicBranch} --title "…" --body "…"\`. After it prints the PR URL, report it.`);
+  return lines.join('\n\n');
+}
+
 export function pushPrompt(args: { topicBranch: string; topicTitle: string; ticketKey: string | null; forkRemote: string }): string {
   const ctx = args.ticketKey ? `${args.ticketKey} — ${args.topicTitle}` : args.topicTitle;
   return [

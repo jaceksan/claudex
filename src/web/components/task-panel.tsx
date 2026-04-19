@@ -74,7 +74,7 @@ export function TaskPanel({
             {isBusy(task) && (
               <div className="mt-2 text-xs text-zinc-500">Claude is working — buttons hidden until idle.</div>
             )}
-            {isIdle(task) && !task.discardedAt && (
+            {isIdle(task) && !task.discardedAt && task.type !== 'delivery' && (
               <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   type="button"
