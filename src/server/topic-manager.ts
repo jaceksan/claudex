@@ -145,6 +145,54 @@ export class TopicManager {
     });
   }
 
+  /** Commit uncommitted changes inside the task worktree. */
+  async saveTask(sessionId: string, message?: string) {
+    const task = this.d.tasks.getBySession(sessionId);
+    if (!task) throw new Error(`task ${sessionId} not found`);
+    if (!task.worktreePath) throw new Error('task has no worktree to save in');
+    const dirty = (await this.d.git(['status', '--porcelain'], task.worktreePath)).trim();
+    if (!dirty) throw new Error('Nothing to save — no uncommitted changes.');
+    await this.d.git(['add', '-A'], task.worktreePath);
+    const topic = this.d.topics.getById(task.topicId)!;
+    const subject = (message ?? task.label ?? topic.title).trim() || 'WIP';
+    const msg = `${topic.ticketKey ? topic.ticketKey + ': ' : ''}${subject}`;
+    await this.d.git(['commit', '-m', msg], task.worktreePath);
+  }
+
+  /** Drop all uncommitted changes in the task worktree. Keeps commits + worktree + session. */
+  async discardTaskChanges(sessionId: string) {
+    const task = this.d.tasks.getBySession(sessionId);
+    if (!task) throw new Error(`task ${sessionId} not found`);
+    if (!task.worktreePath) throw new Error('task has no worktree');
+    try { await this.d.git(['restore', '.'], task.worktreePath); } catch { /* empty tree ok */ }
+    await this.d.git(['clean', '-fd'], task.worktreePath);
+  }
+
+  /** Hard-kill the task: end subprocess, remove worktree, delete branch, mark discarded. */
+  async discardTaskHard(sessionId: string) {
+    const task = this.d.tasks.getBySession(sessionId);
+    if (!task) throw new Error(`task ${sessionId} not found`);
+    const topic = this.d.topics.getById(task.topicId)!;
+    const repo = this.d.repos.getById(topic.repoId)!;
+
+    if (this.d.deleteSession) {
+      try { this.d.deleteSession(sessionId); } catch { /* best-effort */ }
+    }
+    if (task.worktreePath) {
+      try { await this.d.git(['worktree', 'remove', '--force', task.worktreePath], repo.path); }
+      catch { /* might already be gone via deleteSession */ }
+    }
+    if (task.childBranch) {
+      try { await this.d.git(['branch', '-D', task.childBranch], repo.path); }
+      catch { /* ignore */ }
+    }
+    // Mark discarded only if not already accepted (don't clobber provenance).
+    if (!task.acceptedAt && !task.discardedAt) {
+      this.d.tasks.markDiscarded(sessionId);
+    }
+  }
+
+  /** Squash-merge an attempt task into the topic branch. Refuses dirty worktree. */
   async acceptAttempt(sessionId: string) {
     const task = this.d.tasks.getBySession(sessionId);
     if (!task) throw new Error(`task ${sessionId} not found`);
@@ -152,15 +200,21 @@ export class TopicManager {
     const topic = this.d.topics.getById(task.topicId)!;
     const repo = this.d.repos.getById(topic.repoId)!;
 
-    // Precheck: an attempt branch with no commits beyond the topic branch has nothing
-    // to merge. Fail early with a clear message instead of letting `git commit` throw
-    // "nothing to commit" deep in the pipeline.
+    // Refuse if the task worktree still has uncommitted changes — non-tech users should
+    // make an explicit Save or Discard changes decision before losing work to a merge.
+    if (task.worktreePath) {
+      const dirty = (await this.d.git(['status', '--porcelain'], task.worktreePath)).trim();
+      if (dirty) {
+        throw new Error('Uncommitted changes in the task worktree — Save or Discard changes first, then merge.');
+      }
+    }
+
     const ahead = (await this.d.git(
       ['rev-list', '--count', `${topic.topicBranch!}..${task.childBranch!}`],
       repo.path,
     )).trim();
     if (ahead === '0') {
-      throw new Error('This task has no commits yet — nothing to accept. Ask Claude to commit its changes first, or Discard the task.');
+      throw new Error('This task has no commits yet — Save its changes first, or Discard the task.');
     }
 
     await this.d.git(['checkout', topic.topicBranch!], repo.path);
@@ -178,6 +232,15 @@ export class TopicManager {
 
   async discardAttempt(sessionId: string) {
     this.d.tasks.markDiscarded(sessionId);
+  }
+
+  /** Push the topic branch to the fork remote. */
+  async pushTopic(topicId: string) {
+    const topic = this.d.topics.getById(topicId);
+    if (!topic) throw new Error(`topic ${topicId} not found`);
+    if (!topic.topicBranch) throw new Error('topic has no branch to push');
+    const repo = this.d.repos.getById(topic.repoId)!;
+    await this.d.git(['push', '--set-upstream', repo.forkRemote, topic.topicBranch], repo.path);
   }
 
   async addFixTask(topicId: string, args: {

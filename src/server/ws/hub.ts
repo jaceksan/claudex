@@ -275,26 +275,6 @@ export class WsHub {
           });
           break;
         }
-        case 'client.topic.accept': {
-          const td = this.topicDeps;
-          if (!td) return this.sendError(ws, 'topic support not initialised');
-          td.topicManager.acceptAttempt(env.payload.sessionId).then(() => {
-            this.broadcast(buildTopicState(td));
-          }).catch((e: Error) => {
-            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'accept' } });
-          });
-          break;
-        }
-        case 'client.topic.discard': {
-          const td = this.topicDeps;
-          if (!td) return this.sendError(ws, 'topic support not initialised');
-          td.topicManager.discardAttempt(env.payload.sessionId).then(() => {
-            this.broadcast(buildTopicState(td));
-          }).catch((e: Error) => {
-            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'discard' } });
-          });
-          break;
-        }
         case 'client.topic.previewBranch': {
           const td = this.topicDeps;
           if (!td) return this.sendError(ws, 'topic support not initialised');
@@ -435,41 +415,87 @@ export class WsHub {
           this.topicSubs.get(ws)?.delete(env.payload.topicId);
           break;
         }
-        case 'client.topic.acceptTask': {
+        case 'client.task.save': {
           const td = this.topicDeps;
           if (!td) return this.sendError(ws, 'topic support not initialised');
-          const { sessionId } = env.payload;
+          const { sessionId, message } = env.payload;
           const task = td.tasks.getBySession(sessionId);
-          const doAccept = task?.type === 'attempt'
-            ? td.topicManager.acceptAttempt(sessionId)
-            : td.topicManager.acceptFixTask(sessionId);
-          doAccept.then(async () => {
+          td.topicManager.saveTask(sessionId, message).then(async () => {
             this.broadcast(buildTopicState(td));
             if (task) {
               const detail = await buildTopicDetail(task.topicId, td);
               this.broadcastTopicDetail(task.topicId, detail);
             }
           }).catch((e: Error) => {
-            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'acceptTask' } });
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'save' } });
           });
           break;
         }
-        case 'client.topic.discardTask': {
+        case 'client.task.discardChanges': {
           const td = this.topicDeps;
           if (!td) return this.sendError(ws, 'topic support not initialised');
           const { sessionId } = env.payload;
           const task = td.tasks.getBySession(sessionId);
-          const doDiscard = task?.type === 'attempt'
-            ? td.topicManager.discardAttempt(sessionId)
-            : td.topicManager.discardFixTask(sessionId);
-          doDiscard.then(async () => {
+          td.topicManager.discardTaskChanges(sessionId).then(async () => {
             this.broadcast(buildTopicState(td));
             if (task) {
               const detail = await buildTopicDetail(task.topicId, td);
               this.broadcastTopicDetail(task.topicId, detail);
             }
           }).catch((e: Error) => {
-            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'discardTask' } });
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'discardChanges' } });
+          });
+          break;
+        }
+        case 'client.task.discardHard': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          const { sessionId } = env.payload;
+          const task = td.tasks.getBySession(sessionId);
+          td.topicManager.discardTaskHard(sessionId).then(async () => {
+            this.broadcast(buildTopicState(td));
+            if (task) {
+              try {
+                const detail = await buildTopicDetail(task.topicId, td);
+                this.broadcastTopicDetail(task.topicId, detail);
+              } catch { /* topic may also be gone */ }
+            }
+          }).catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'discardHard' } });
+          });
+          break;
+        }
+        case 'client.task.merge': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          const { sessionId } = env.payload;
+          const task = td.tasks.getBySession(sessionId);
+          const doMerge = task?.type === 'attempt'
+            ? td.topicManager.acceptAttempt(sessionId)
+            : td.topicManager.acceptFixTask(sessionId);
+          doMerge.then(async () => {
+            this.broadcast(buildTopicState(td));
+            if (task) {
+              const detail = await buildTopicDetail(task.topicId, td);
+              this.broadcastTopicDetail(task.topicId, detail);
+            }
+          }).catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'merge' } });
+          });
+          break;
+        }
+        case 'client.topic.push': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          const { topicId } = env.payload;
+          td.topicManager.pushTopic(topicId).then(async () => {
+            this.broadcast(buildTopicState(td));
+            try {
+              const detail = await buildTopicDetail(topicId, td);
+              this.broadcastTopicDetail(topicId, detail);
+            } catch { /* best-effort */ }
+          }).catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'push' } });
           });
           break;
         }

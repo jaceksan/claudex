@@ -9,15 +9,16 @@ export type TopicClientMessage =
       branchOverride?: string;
     } }
   | { type: 'client.topic.addAttempt'; payload: { topicId: string; prompt?: string; effort: string; permissionMode: string; label?: string } }
-  | { type: 'client.topic.accept'; payload: { sessionId: string } }
-  | { type: 'client.topic.discard'; payload: { sessionId: string } }
   | { type: 'client.topic.list'; payload: { repoId?: string } }
   | { type: 'client.topic.delete'; payload: { topicId: string } }
   | { type: 'client.topic.previewBranch'; payload: { repoId: string; title: string; ticketKey?: string; override?: string } }
   | { type: 'client.topic.subscribe'; payload: { topicId: string } }
   | { type: 'client.topic.unsubscribe'; payload: { topicId: string } }
-  | { type: 'client.topic.acceptTask'; payload: { sessionId: string } }
-  | { type: 'client.topic.discardTask'; payload: { sessionId: string } }
+  | { type: 'client.topic.push'; payload: { topicId: string } }
+  | { type: 'client.task.save'; payload: { sessionId: string; message?: string } }
+  | { type: 'client.task.discardChanges'; payload: { sessionId: string } }
+  | { type: 'client.task.discardHard'; payload: { sessionId: string } }
+  | { type: 'client.task.merge'; payload: { sessionId: string } }
   | { type: 'client.repo.list'; payload: Record<string, never> }
   | { type: 'client.pr.create'; payload: { topicId: string; title?: string; body?: string } }
   | { type: 'client.pr.addressFeedback'; payload: { topicId: string; includeCi: boolean; includeComments: boolean } }

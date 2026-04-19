@@ -8,7 +8,7 @@ const exec = promisify(execFile);
 
 export interface TaskContext {
   topic: { id: string; title: string };
-  task: { label: string | null; type: string };
+  task: { label: string | null; type: string; acceptedAt: number | null; discardedAt: number | null };
   branch: string;
   aheadTopic: number;       // commits on this attempt branch not yet on the topic branch
   aheadCanonical: number;   // commits on HEAD not on <canonical>/<defaultBranch>
@@ -47,7 +47,7 @@ export async function getTaskContext(
 
   return {
     topic: { id: topic.id, title: topic.title },
-    task: { label: task.label, type: task.type },
+    task: { label: task.label, type: task.type, acceptedAt: task.acceptedAt, discardedAt: task.discardedAt },
     branch: task.childBranch,
     aheadTopic,
     aheadCanonical,

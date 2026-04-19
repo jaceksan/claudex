@@ -30,14 +30,18 @@ export function TaskPanel({
   tasks,
   topic,
   onOpenSession,
-  onAccept,
-  onDiscard,
+  onSave,
+  onDiscardChanges,
+  onDiscardHard,
+  onMerge,
 }: {
   tasks: TaskRow[];
   topic: TopicMeta;
   onOpenSession: (sessionId: string) => void;
-  onAccept: (sessionId: string) => void;
-  onDiscard: (sessionId: string) => void;
+  onSave: (sessionId: string) => void;
+  onDiscardChanges: (sessionId: string) => void;
+  onDiscardHard: (sessionId: string) => void;
+  onMerge: (sessionId: string) => void;
 }) {
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
@@ -64,20 +68,40 @@ export function TaskPanel({
               {task.childBranch && <span className="ml-2 font-mono">{task.childBranch.split('/').pop()}</span>}
             </div>
             {isIdle(task) && !task.discardedAt && (
-              <div className="mt-2 flex gap-2">
+              <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() => onAccept(task.sessionId)}
-                  className="rounded bg-emerald-700 px-2 py-0.5 text-xs text-white hover:bg-emerald-600"
+                  onClick={() => onSave(task.sessionId)}
+                  className="rounded bg-blue-700 px-2 py-0.5 text-xs text-white hover:bg-blue-600"
+                  title="Commit uncommitted changes in the worktree"
                 >
-                  {task.type === 'attempt' ? 'Accept' : 'Accept fix'}
+                  Save
                 </button>
                 <button
                   type="button"
-                  onClick={() => onDiscard(task.sessionId)}
+                  onClick={() => onMerge(task.sessionId)}
+                  className="rounded bg-emerald-700 px-2 py-0.5 text-xs text-white hover:bg-emerald-600"
+                  title="Merge task commits into the topic branch"
+                >
+                  {task.type === 'attempt' ? 'Merge to topic' : 'Apply fix'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm('Drop all uncommitted changes in this task worktree? Commits are kept.')) onDiscardChanges(task.sessionId);
+                  }}
+                  className="rounded border border-zinc-700 px-2 py-0.5 text-xs text-zinc-400 hover:border-amber-600 hover:text-amber-400"
+                >
+                  Discard changes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm('Discard this task? This kills the session, removes the worktree and deletes the branch. Any uncommitted work or local commits are lost.')) onDiscardHard(task.sessionId);
+                  }}
                   className="rounded border border-zinc-700 px-2 py-0.5 text-xs text-zinc-400 hover:border-red-600 hover:text-red-400"
                 >
-                  Discard
+                  Discard task
                 </button>
               </div>
             )}

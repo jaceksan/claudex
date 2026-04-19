@@ -237,6 +237,50 @@ export default function SessionPage({ id }: { id: string }) {
           </>
         )}
       </div>
+      {/* Row 2.5 — task actions (task sessions only, while open) */}
+      {taskCtx && !taskCtx.task.acceptedAt && !taskCtx.task.discardedAt && (
+        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+          <button
+            type="button"
+            onClick={() => send({ type: 'client.task.save', payload: { sessionId: id } })}
+            className="rounded bg-blue-700 px-2 py-0.5 text-[11px] text-white hover:bg-blue-600"
+            title="Commit uncommitted changes in this worktree"
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            onClick={() => send({ type: 'client.task.merge', payload: { sessionId: id } })}
+            className="rounded bg-emerald-700 px-2 py-0.5 text-[11px] text-white hover:bg-emerald-600"
+            title="Merge task commits into the topic branch"
+          >
+            {taskCtx.task.type === 'attempt' ? 'Merge to topic' : 'Apply fix'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (confirm('Drop all uncommitted changes? Commits are kept.')) {
+                send({ type: 'client.task.discardChanges', payload: { sessionId: id } });
+              }
+            }}
+            className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300 hover:border-amber-600 hover:text-amber-400"
+          >
+            Discard changes
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (confirm('Discard this task? Kills the session, removes the worktree, and deletes the branch. Unmerged work is lost.')) {
+                send({ type: 'client.task.discardHard', payload: { sessionId: id } });
+                navigate(`/topic/${taskCtx.topic.id}`);
+              }
+            }}
+            className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300 hover:border-red-600 hover:text-red-400"
+          >
+            Discard task
+          </button>
+        </div>
+      )}
       {/* Row 3 — usage stats */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-zinc-500">
         <span title="Cumulative cost across all resumes of this session">

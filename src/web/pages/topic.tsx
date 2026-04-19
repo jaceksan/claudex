@@ -37,11 +37,20 @@ export default function TopicPage({ id }: { id: string }) {
 
   const { topic, tasks, pr, threads, checks, required } = detail;
 
-  function handleAcceptTask(sessionId: string) {
-    send({ type: 'client.topic.acceptTask', payload: { sessionId } });
+  function handleSaveTask(sessionId: string) {
+    send({ type: 'client.task.save', payload: { sessionId } });
   }
-  function handleDiscardTask(sessionId: string) {
-    send({ type: 'client.topic.discardTask', payload: { sessionId } });
+  function handleDiscardTaskChanges(sessionId: string) {
+    send({ type: 'client.task.discardChanges', payload: { sessionId } });
+  }
+  function handleDiscardTaskHard(sessionId: string) {
+    send({ type: 'client.task.discardHard', payload: { sessionId } });
+  }
+  function handleMergeTask(sessionId: string) {
+    send({ type: 'client.task.merge', payload: { sessionId } });
+  }
+  function handlePushTopic() {
+    send({ type: 'client.topic.push', payload: { topicId: id } });
   }
   function handleCreatePR(title?: string, body?: string) {
     send({ type: 'client.pr.create', payload: { topicId: id, title, body } });
@@ -82,8 +91,10 @@ export default function TopicPage({ id }: { id: string }) {
               tasks={tasks}
               topic={topic}
               onOpenSession={(sessionId) => navigate(`/session/${sessionId}`)}
-              onAccept={handleAcceptTask}
-              onDiscard={handleDiscardTask}
+              onSave={handleSaveTask}
+              onDiscardChanges={handleDiscardTaskChanges}
+              onDiscardHard={handleDiscardTaskHard}
+              onMerge={handleMergeTask}
             />
             <div className="flex flex-col gap-4">
               {pr && threads && threads.length > 0 && (
@@ -116,6 +127,7 @@ export default function TopicPage({ id }: { id: string }) {
         onCreatePR={handleCreatePR}
         onAddressFeedback={handleAddressFeedback}
         onAddAttempt={handleAddAttempt}
+        onPush={handlePushTopic}
       />
       {showAddAttempt && (
         <AddTaskModal topicId={id} onClose={() => setShowAddAttempt(false)} />

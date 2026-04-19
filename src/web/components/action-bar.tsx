@@ -78,6 +78,7 @@ export function ActionBar({
   onCreatePR,
   onAddressFeedback,
   onAddAttempt,
+  onPush,
 }: {
   topic: TopicMeta;
   tasks: TaskRow[];
@@ -88,6 +89,7 @@ export function ActionBar({
   onCreatePR: (title?: string, body?: string) => void;
   onAddressFeedback: (includeCi: boolean, includeComments: boolean) => void;
   onAddAttempt: () => void;
+  onPush: () => void;
 }) {
   const actions = visibleActions(topic, tasks, pr, threads, checks, required);
 
@@ -166,6 +168,17 @@ export function ActionBar({
           className="rounded border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
         >
           + New task
+        </button>
+      )}
+
+      {topic.phase !== 'Exploring' && topic.topicBranch && (
+        <button
+          type="button"
+          onClick={onPush}
+          className="rounded border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
+          title={`Push ${topic.topicBranch} to origin`}
+        >
+          Push
         </button>
       )}
 

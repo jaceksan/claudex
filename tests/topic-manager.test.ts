@@ -422,6 +422,10 @@ describe('TopicManager.acceptFixTask / discardFixTask', () => {
         gitCalls.push({ args, cwd });
         // Probe-only commands should return empty so branch-collision checks see no match.
         if (args[0] === 'branch' && args[1] === '--list') return '';
+        // Clean-worktree probe — return empty to signal no uncommitted changes.
+        if (args[0] === 'status' && args[1] === '--porcelain') return '';
+        // Ahead-count probe — return non-zero so merge precheck passes.
+        if (args[0] === 'rev-list' && args[1] === '--count') return '1';
         return gitReturnValue;
       },
       createWorktree: (_cwd, id, opts) => ({ path: `/tmp/wt/${id}`, origin: '/tmp/r', branch: opts.branch }),
