@@ -124,6 +124,12 @@ app.get<{ Params: { id: string } }>('/api/sessions/:id/git', async (req, reply) 
 app.get<{ Params: { id: string } }>('/api/sessions/:id/task-context', async (req, reply) => {
   const h = manager.get(req.params.id);
   if (!h) return reply.code(404).send({ error: 'no such session' });
+  // Reconcile merged attempts so the session page sees acceptedAt flip quickly
+  // after Claude performs a Merge-to-topic via prompt.
+  const task = tasks.getBySession(req.params.id);
+  if (task) {
+    try { await topicManager.reconcileMergedAttempts(task.topicId); } catch { /* best-effort */ }
+  }
   const ctx = await getTaskContext({ tasks, topics, repos }, req.params.id, h.state.cwd);
   return ctx;
 });

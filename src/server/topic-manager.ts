@@ -244,12 +244,58 @@ export class TopicManager {
   }
 
   /**
+   * Passive auto-reconcile for merges performed outside the server (e.g. via
+   * the Merge-to-topic prompt, or a developer using `git` directly). For each
+   * open attempt, `git cherry <topic-branch> <task-branch>` lists commits on
+   * the task branch and marks which ones are equivalent to commits on the
+   * topic branch. When every line starts with `-` (or output is empty) the
+   * task's patches are all already on the topic branch, which squash + rebase
+   * merges both produce — so treat the task as accepted.
+   *
+   * Idempotent and cheap (one `git cherry` per open attempt). Called from
+   * computeDeliverable and from buildTopicDetail so the UI converges naturally.
+   */
+  async reconcileMergedAttempts(topicId: string): Promise<void> {
+    const topic = this.d.topics.getById(topicId);
+    if (!topic?.topicBranch) return;
+    const repo = this.d.repos.getById(topic.repoId);
+    if (!repo) return;
+
+    const open = this.d.tasks.listByTopic(topicId).filter((t) =>
+      t.type === 'attempt' && !t.acceptedAt && !t.discardedAt && t.childBranch,
+    );
+    if (open.length === 0) return;
+
+    for (const t of open) {
+      try {
+        const out = (await this.d.git(['cherry', topic.topicBranch, t.childBranch!], repo.path)).trim();
+        const merged = out === '' || out.split('\n').every((l) => l.startsWith('-'));
+        if (!merged) continue;
+        this.d.tasks.markAccepted(t.sessionId);
+        const current = this.d.topics.getById(topicId)!;
+        if (!current.acceptedAttemptId) {
+          this.d.topics.setPhase(topic.id, current.phase, { acceptedAttemptId: t.sessionId });
+          // Cascade: all other open attempts are now superseded.
+          for (const s of this.d.tasks.listByTopic(topicId)) {
+            if (s.type === 'attempt' && s.sessionId !== t.sessionId && !s.acceptedAt && !s.discardedAt) {
+              this.d.tasks.markDiscarded(s.sessionId);
+            }
+          }
+        }
+      } catch { /* best-effort — don't block detail rendering on git hiccups */ }
+    }
+  }
+
+  /**
    * Is the topic in a "deliverable" state: every attempt accepted-or-discarded,
    * no uncommitted changes in any task worktree, topic branch has commits ahead
    * of canonical default. Returns reasons[] when not deliverable so the UI can
    * explain why the Push/Open-PR buttons are hidden.
    */
   async computeDeliverable(topicId: string): Promise<{ ok: boolean; reasons: string[] }> {
+    // Reconcile first so we don't report "N tasks still open" for ones that
+    // have already been merged by a Claude-driven squash.
+    await this.reconcileMergedAttempts(topicId);
     const reasons: string[] = [];
     const topic = this.d.topics.getById(topicId);
     if (!topic) return { ok: false, reasons: ['Topic not found.'] };
