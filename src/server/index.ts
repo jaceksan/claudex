@@ -87,7 +87,7 @@ const prLifecycle = new PrLifecycle({
   topicManager,
 });
 
-const hub = new WsHub(manager, notifications, db, transcripts, { topicManager, repos, topics, tasks, rawDb: db.underlying() });
+const hub = new WsHub(manager, notifications, db, transcripts, { topicManager, repos, topics, tasks, rawDb: db.underlying(), prLifecycle, prCache });
 
 // Auto-accept + auto-PR for quick-fix topics on session success.
 manager.on('ended', (h) => {
