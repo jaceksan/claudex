@@ -509,9 +509,24 @@ export class TopicManager {
     // Belt-and-braces: task rows should be gone via cascade, but confirm.
     this.d.db.prepare('DELETE FROM task WHERE topic_id=?').run(topicId);
 
-    // Drop the topic branch — best-effort, ignore if it was never created or already gone.
-    if (repo && topic.topicBranch) {
-      try { await this.d.git(['branch', '-D', topic.topicBranch], repo.path); } catch { /* ignore */ }
+    if (repo) {
+      // The delivery session leaves repo.path checked out on the topic branch;
+      // git refuses to delete a branch that's currently HEAD. Switch back to
+      // the default branch first so both the topic branch and the per-task
+      // branches can be force-deleted cleanly.
+      if (topic.topicBranch) {
+        try { await this.d.git(['checkout', repo.defaultBranch], repo.path); } catch { /* best-effort */ }
+      }
+      // Drop every per-task branch (<topic>__<task>, __claudex_fix__<n>, etc.).
+      for (const t of siblingTasks) {
+        if (t.childBranch && t.childBranch !== topic.topicBranch) {
+          try { await this.d.git(['branch', '-D', t.childBranch], repo.path); } catch { /* ignore */ }
+        }
+      }
+      // Drop the topic branch.
+      if (topic.topicBranch) {
+        try { await this.d.git(['branch', '-D', topic.topicBranch], repo.path); } catch { /* ignore */ }
+      }
     }
 
     this.d.topics.delete(topicId);
