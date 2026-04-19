@@ -1,0 +1,25 @@
+src/web/pages/topic.tsx
+  7a240c56656ec247 150
+src/web/components/action-bar.tsx
+  7a240c56656ec247 85,99,118-136
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "59457f92d913b0d88197fdfb9a1e93eff032ef12",
+  "prompts": {
+    "7a240c56656ec247": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28cd815a-90e4-4f16-b2c1-5aacb321a562",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 22,
+      "total_deletions": 15,
+      "accepted_lines": 382,
+      "overriden_lines": 0
+    }
+  }
+}
