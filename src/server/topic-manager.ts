@@ -269,7 +269,14 @@ export class TopicManager {
     for (const t of open) {
       try {
         const out = (await this.d.git(['cherry', topic.topicBranch, t.childBranch!], repo.path)).trim();
-        const merged = out === '' || out.split('\n').every((l) => l.startsWith('-'));
+        // `git cherry` is empty when the task branch has no commits not already
+        // on the topic branch — which also holds true for a *brand-new* task
+        // branch that hasn't diverged yet. Require at least one matched line
+        // (prefixed `-`) before declaring the task merged, otherwise every
+        // freshly spawned attempt would be auto-accepted before the user even
+        // changes a file.
+        const lines = out === '' ? [] : out.split('\n');
+        const merged = lines.length > 0 && lines.every((l) => l.startsWith('-'));
         if (!merged) continue;
         this.d.tasks.markAccepted(t.sessionId);
         const current = this.d.topics.getById(topicId)!;
