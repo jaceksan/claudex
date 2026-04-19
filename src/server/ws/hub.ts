@@ -15,6 +15,7 @@ import type Database from 'better-sqlite3';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { isEffortLevel } from '../session/state.js';
+import { savePrompt, mergePrompt, pushPrompt } from './task-prompts.js';
 
 const execFileP = promisify(execFile);
 
@@ -95,7 +96,19 @@ export async function buildTopicDetail(topicId: string, deps: TopicDeps): Promis
     };
   });
 
-  const bundle: TopicDetailBundle = { topicId, topic: topicCard, tasks: taskRows };
+  const deliveryTask = taskRows.find((t) => t.type === 'delivery' && !t.discardedAt);
+  const deliverable = deps.topicManager
+    ? await deps.topicManager.computeDeliverable(topicId).catch((): { ok: false; reasons: string[] } => ({
+        ok: false, reasons: ['Could not determine deliverable state.'],
+      }))
+    : { ok: false, reasons: ['Topic manager not initialised.'] };
+
+  const bundle: TopicDetailBundle = {
+    topicId, topic: topicCard, tasks: taskRows,
+    deliverable,
+    deliverySessionId: deliveryTask?.sessionId ?? null,
+    deliverySessionStatus: deliveryTask?.sessionStatus ?? null,
+  };
 
   if ((topic.phase === 'Open' || topic.phase === 'Draft') && topic.prNumber && deps.prCache && repo) {
     try {
@@ -418,17 +431,17 @@ export class WsHub {
         case 'client.task.save': {
           const td = this.topicDeps;
           if (!td) return this.sendError(ws, 'topic support not initialised');
-          const { sessionId, message } = env.payload;
+          const { sessionId } = env.payload;
           const task = td.tasks.getBySession(sessionId);
-          td.topicManager.saveTask(sessionId, message).then(async () => {
-            this.broadcast(buildTopicState(td));
-            if (task) {
-              const detail = await buildTopicDetail(task.topicId, td);
-              this.broadcastTopicDetail(task.topicId, detail);
-            }
-          }).catch((e: Error) => {
-            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'save' } });
-          });
+          if (!task) return this.send(ws, { type: 'server.topic.error', payload: { message: 'No task for that session.', ctx: 'save' } });
+          const topic = td.topics.getById(task.topicId);
+          if (!topic) return this.send(ws, { type: 'server.topic.error', payload: { message: 'No topic for that task.', ctx: 'save' } });
+          const h = this.manager.get(sessionId);
+          if (!h) return this.send(ws, { type: 'server.topic.error', payload: { message: 'Session is not running. Resume it first.', ctx: 'save' } });
+          if (h.state.status === 'running' || h.state.status === 'starting') {
+            return this.send(ws, { type: 'server.topic.error', payload: { message: 'Claude is busy — wait until idle and try again.', ctx: 'save' } });
+          }
+          h.send(savePrompt({ topicTitle: topic.title, taskLabel: task.label, ticketKey: topic.ticketKey }));
           break;
         }
         case 'client.task.discardChanges': {
@@ -470,31 +483,62 @@ export class WsHub {
           if (!td) return this.sendError(ws, 'topic support not initialised');
           const { sessionId } = env.payload;
           const task = td.tasks.getBySession(sessionId);
-          const doMerge = task?.type === 'attempt'
-            ? td.topicManager.acceptAttempt(sessionId)
-            : td.topicManager.acceptFixTask(sessionId);
-          doMerge.then(async () => {
-            this.broadcast(buildTopicState(td));
-            if (task) {
-              const detail = await buildTopicDetail(task.topicId, td);
-              this.broadcastTopicDetail(task.topicId, detail);
-            }
-          }).catch((e: Error) => {
-            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'merge' } });
-          });
+          if (!task) return this.send(ws, { type: 'server.topic.error', payload: { message: 'No task for that session.', ctx: 'merge' } });
+          const topic = td.topics.getById(task.topicId);
+          if (!topic) return this.send(ws, { type: 'server.topic.error', payload: { message: 'No topic for that task.', ctx: 'merge' } });
+          const repo = td.repos.getById(topic.repoId);
+          if (!repo) return this.send(ws, { type: 'server.topic.error', payload: { message: 'No repo for that topic.', ctx: 'merge' } });
+          const h = this.manager.get(sessionId);
+          if (!h) return this.send(ws, { type: 'server.topic.error', payload: { message: 'Session is not running. Resume it first.', ctx: 'merge' } });
+          if (h.state.status === 'running' || h.state.status === 'starting') {
+            return this.send(ws, { type: 'server.topic.error', payload: { message: 'Claude is busy — wait until idle and try again.', ctx: 'merge' } });
+          }
+          if (!topic.topicBranch || !task.childBranch) {
+            return this.send(ws, { type: 'server.topic.error', payload: { message: 'Task or topic is missing branch info.', ctx: 'merge' } });
+          }
+          h.send(mergePrompt({
+            topicBranch: topic.topicBranch,
+            taskBranch: task.childBranch,
+            repoPath: repo.path,
+            topicTitle: topic.title,
+            taskLabel: task.label,
+            ticketKey: topic.ticketKey,
+          }));
           break;
         }
         case 'client.topic.push': {
           const td = this.topicDeps;
           if (!td) return this.sendError(ws, 'topic support not initialised');
           const { topicId } = env.payload;
-          td.topicManager.pushTopic(topicId).then(async () => {
+          (async () => {
+            const topic = td.topics.getById(topicId);
+            if (!topic || !topic.topicBranch) throw new Error('No branch to push.');
+            const repo = td.repos.getById(topic.repoId)!;
+
+            const deliverable = await td.topicManager.computeDeliverable(topicId);
+            if (!deliverable.ok) throw new Error(`Topic not ready to push: ${deliverable.reasons.join(' ')}`);
+
+            const { sessionId, spawned } = await td.topicManager.ensureDeliverySession(topicId);
             this.broadcast(buildTopicState(td));
-            try {
-              const detail = await buildTopicDetail(topicId, td);
-              this.broadcastTopicDetail(topicId, detail);
-            } catch { /* best-effort */ }
-          }).catch((e: Error) => {
+            const detail = await buildTopicDetail(topicId, td);
+            this.broadcastTopicDetail(topicId, detail);
+
+            // Give a freshly-spawned stream-json subprocess a moment to hit idle
+            // (see CLAUDE.md §5 — it stays silent until stdin).
+            if (spawned) await new Promise((r) => setTimeout(r, 250));
+
+            const h = this.manager.get(sessionId);
+            if (!h) throw new Error('Delivery session vanished before prompt could be sent.');
+            if (h.state.status === 'running' || h.state.status === 'starting') {
+              throw new Error('Delivery session is busy — wait until idle and try again.');
+            }
+            h.send(pushPrompt({
+              topicBranch: topic.topicBranch,
+              topicTitle: topic.title,
+              ticketKey: topic.ticketKey,
+              forkRemote: repo.forkRemote,
+            }));
+          })().catch((e: Error) => {
             this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'push' } });
           });
           break;

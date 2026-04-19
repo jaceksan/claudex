@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 
-export type TaskType = 'attempt' | 'fix-comments' | 'fix-ci' | 'rebase' | 'free';
+export type TaskType = 'attempt' | 'fix-comments' | 'fix-ci' | 'rebase' | 'free' | 'delivery';
 export interface TaskInput {
   sessionId: string; topicId: string; type: TaskType;
   label?: string | null; parentTrigger?: unknown;

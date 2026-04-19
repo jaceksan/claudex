@@ -26,6 +26,10 @@ function isIdle(task: TaskRow): boolean {
     (task.sessionStatus === 'idle' || task.sessionStatus === 'ended');
 }
 
+function isBusy(task: TaskRow): boolean {
+  return task.sessionStatus === 'running' || task.sessionStatus === 'starting' || task.sessionStatus === 'waiting-permission';
+}
+
 export function TaskPanel({
   tasks,
   topic,
@@ -67,6 +71,9 @@ export function TaskPanel({
               {taskTypeLabel(task.type)}
               {task.childBranch && <span className="ml-2 font-mono">{task.childBranch.split('/').pop()}</span>}
             </div>
+            {isBusy(task) && (
+              <div className="mt-2 text-xs text-zinc-500">Claude is working — buttons hidden until idle.</div>
+            )}
             {isIdle(task) && !task.discardedAt && (
               <div className="mt-2 flex flex-wrap gap-2">
                 <button

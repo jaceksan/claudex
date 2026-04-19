@@ -35,7 +35,7 @@ export default function TopicPage({ id }: { id: string }) {
     );
   }
 
-  const { topic, tasks, pr, threads, checks, required } = detail;
+  const { topic, tasks, pr, threads, checks, required, deliverable, deliverySessionStatus } = detail;
 
   function handleSaveTask(sessionId: string) {
     send({ type: 'client.task.save', payload: { sessionId } });
@@ -128,6 +128,8 @@ export default function TopicPage({ id }: { id: string }) {
         onAddressFeedback={handleAddressFeedback}
         onAddAttempt={handleAddAttempt}
         onPush={handlePushTopic}
+        deliverable={deliverable}
+        deliverySessionStatus={deliverySessionStatus}
       />
       {showAddAttempt && (
         <AddTaskModal topicId={id} onClose={() => setShowAddAttempt(false)} />

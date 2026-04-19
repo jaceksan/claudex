@@ -1,4 +1,5 @@
 import type { TaskRow, TopicDetailBundle } from '../../server/ws/topic-envelope';
+type Deliverable = TopicDetailBundle['deliverable'];
 import type { PR, ReviewThread, Check } from '../../server/vcs/adapter';
 
 type TopicMeta = TopicDetailBundle['topic'];
@@ -79,6 +80,8 @@ export function ActionBar({
   onAddressFeedback,
   onAddAttempt,
   onPush,
+  deliverable,
+  deliverySessionStatus,
 }: {
   topic: TopicMeta;
   tasks: TaskRow[];
@@ -90,6 +93,8 @@ export function ActionBar({
   onAddressFeedback: (includeCi: boolean, includeComments: boolean) => void;
   onAddAttempt: () => void;
   onPush: () => void;
+  deliverable: Deliverable;
+  deliverySessionStatus: string | null;
 }) {
   const actions = visibleActions(topic, tasks, pr, threads, checks, required);
 
@@ -171,16 +176,30 @@ export function ActionBar({
         </button>
       )}
 
-      {topic.phase !== 'Exploring' && topic.topicBranch && (
-        <button
-          type="button"
-          onClick={onPush}
-          className="rounded border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
-          title={`Push ${topic.topicBranch} to origin`}
-        >
-          Push
-        </button>
-      )}
+      {(() => {
+        if (topic.phase === 'Exploring' || !topic.topicBranch) return null;
+        const deliveryBusy = deliverySessionStatus === 'running' || deliverySessionStatus === 'starting' || deliverySessionStatus === 'waiting-permission';
+        if (deliveryBusy) {
+          return <span className="text-xs text-zinc-500">Delivery session working…</span>;
+        }
+        if (!deliverable.ok) {
+          return (
+            <span className="text-xs text-zinc-500" title={deliverable.reasons.join('\n')}>
+              Push unavailable · {deliverable.reasons[0]}
+            </span>
+          );
+        }
+        return (
+          <button
+            type="button"
+            onClick={onPush}
+            className="rounded border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
+            title={`Push ${topic.topicBranch} via delivery session (follows repo conventions)`}
+          >
+            Push
+          </button>
+        );
+      })()}
 
       {topic.phase === 'Open' && !actions.addressFeedback && (
         <span className="ml-auto text-xs text-zinc-600">

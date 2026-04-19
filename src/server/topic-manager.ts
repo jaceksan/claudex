@@ -234,13 +234,105 @@ export class TopicManager {
     this.d.tasks.markDiscarded(sessionId);
   }
 
-  /** Push the topic branch to the fork remote. */
+  /** Push the topic branch to the fork remote (direct git, no Claude). */
   async pushTopic(topicId: string) {
     const topic = this.d.topics.getById(topicId);
     if (!topic) throw new Error(`topic ${topicId} not found`);
     if (!topic.topicBranch) throw new Error('topic has no branch to push');
     const repo = this.d.repos.getById(topic.repoId)!;
     await this.d.git(['push', '--set-upstream', repo.forkRemote, topic.topicBranch], repo.path);
+  }
+
+  /**
+   * Is the topic in a "deliverable" state: every attempt accepted-or-discarded,
+   * no uncommitted changes in any task worktree, topic branch has commits ahead
+   * of canonical default. Returns reasons[] when not deliverable so the UI can
+   * explain why the Push/Open-PR buttons are hidden.
+   */
+  async computeDeliverable(topicId: string): Promise<{ ok: boolean; reasons: string[] }> {
+    const reasons: string[] = [];
+    const topic = this.d.topics.getById(topicId);
+    if (!topic) return { ok: false, reasons: ['Topic not found.'] };
+    if (!topic.topicBranch) return { ok: false, reasons: ['Topic has no branch (exploration topics cannot be delivered).'] };
+    const repo = this.d.repos.getById(topic.repoId)!;
+
+    const taskRows = this.d.tasks.listByTopic(topicId);
+    const attempts = taskRows.filter((t) => t.type === 'attempt');
+    const openAttempts = attempts.filter((t) => !t.acceptedAt && !t.discardedAt);
+    if (openAttempts.length > 0) {
+      reasons.push(`${openAttempts.length} task(s) still open — accept or discard each one first.`);
+    }
+
+    // Any worktree with uncommitted changes? Cheap check via `git status --porcelain`.
+    for (const t of taskRows) {
+      if (!t.worktreePath || t.discardedAt) continue;
+      try {
+        const dirty = (await this.d.git(['status', '--porcelain'], t.worktreePath)).trim();
+        if (dirty) {
+          reasons.push(`Task "${t.label ?? t.type}" has uncommitted changes.`);
+        }
+      } catch { /* worktree may be gone; skip */ }
+    }
+
+    try {
+      const canonicalRef = `${repo.canonicalRemote}/${repo.defaultBranch}`;
+      const ahead = (await this.d.git(['rev-list', '--count', `${canonicalRef}..${topic.topicBranch}`], repo.path)).trim();
+      if (ahead === '0') {
+        reasons.push('Topic branch has no new commits beyond the default branch — nothing to deliver.');
+      }
+    } catch { /* if this fails we just skip — don't block delivery on a missing canonical ref */ }
+
+    return { ok: reasons.length === 0, reasons };
+  }
+
+  /**
+   * Find or spawn the topic's singleton delivery session. Runs directly on the
+   * topic branch inside repo.path (NOT a worktree): this session handles push,
+   * PR creation / edits, CI investigation, comment reading — any op that
+   * concerns the whole topic rather than one task attempt. All such ops are
+   * routed through this session so team rules (CLAUDE.md, skills, MCP) apply.
+   *
+   * Returns the session id. If an existing delivery task is still alive it is
+   * reused; if its session has been deleted, a fresh one is spawned.
+   */
+  async ensureDeliverySession(topicId: string, args: { effort?: string; permissionMode?: string } = {}): Promise<{ sessionId: string; spawned: boolean }> {
+    const topic = this.d.topics.getById(topicId);
+    if (!topic) throw new Error(`topic ${topicId} not found`);
+    if (!topic.topicBranch) throw new Error('topic has no branch — exploration topics cannot be delivered');
+    const repo = this.d.repos.getById(topic.repoId)!;
+
+    // Reuse an existing delivery task iff its session row still exists.
+    const existing = this.d.tasks.listByTopic(topicId).find((t) => t.type === 'delivery' && !t.discardedAt);
+    if (existing) {
+      const row = this.d.db.prepare('SELECT id FROM sessions WHERE id=?').get(existing.sessionId);
+      if (row) return { sessionId: existing.sessionId, spawned: false };
+      // Session was deleted manually — mark the orphan task discarded and fall through to respawn.
+      this.d.tasks.markDiscarded(existing.sessionId);
+    }
+
+    // Ensure the repo is checked out on the topic branch. May fail if the main
+    // checkout is dirty — surface that error rather than stashing silently.
+    await this.d.git(['checkout', topic.topicBranch], repo.path);
+
+    const presetUiId = randomUUID();
+    const label = `delivery: ${topic.title}`;
+    const session = await this.d.spawnSession({
+      cwd: repo.path,
+      label,
+      effort: args.effort ?? 'medium',
+      permissionMode: args.permissionMode ?? 'acceptEdits',
+      presetUiId,
+      // No worktree — this session works directly on the topic branch.
+      appendSystemPrompt: orientationHint({
+        cwd: repo.path, branch: topic.topicBranch, base: `${repo.canonicalRemote}/${repo.defaultBranch}`,
+        topicTitle: topic.title, taskLabel: 'delivery (push / PR / CI / comments)',
+      }),
+    });
+    this.d.tasks.create({
+      sessionId: session.id, topicId, type: 'delivery',
+      label, childBranch: topic.topicBranch, worktreePath: null,
+    });
+    return { sessionId: session.id, spawned: true };
   }
 
   async addFixTask(topicId: string, args: {

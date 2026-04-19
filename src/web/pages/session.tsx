@@ -264,6 +264,10 @@ export default function SessionPage({ id }: { id: string }) {
         const isDirty = !!d && (d.staged + d.unstaged + d.untracked > 0);
         const ahead = taskCtx.aheadTopic;
         const canMerge = !isDirty && ahead > 0;
+        // Hide all buttons while Claude is mid-turn: user's Save/Merge prompts
+        // would queue behind the current one and the effect wouldn't be immediate.
+        const busy = state?.status === 'running' || state?.status === 'starting' || state?.status === 'waiting-permission';
+        if (busy) return null;
         return (
           <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
             {isDirty && (

@@ -88,6 +88,12 @@ export interface TopicDetailBundle {
     repoDefaultBranch: string;
   };
   tasks: TaskRow[];
+  /** Whether the topic is currently deliverable (clean state — see TopicManager.computeDeliverable). */
+  deliverable: { ok: boolean; reasons: string[] };
+  /** Session id of the existing delivery session on this topic, or null. */
+  deliverySessionId: string | null;
+  /** Status of the delivery session, if any. Used to hide Push/Open-PR while busy. */
+  deliverySessionStatus: string | null;
   pr?: import('../vcs/adapter.js').PR;
   threads?: import('../vcs/adapter.js').ReviewThread[];
   checks?: import('../vcs/adapter.js').Check[];
