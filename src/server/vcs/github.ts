@@ -50,10 +50,14 @@ export class GitHubAdapter implements VcsAdapter {
   }
 
   async createPR(input: { cwd: string; base: string; head: string; title: string; body: string }): Promise<PR> {
+    // `gh pr create` does not support --json; it prints the new PR URL on
+    // stdout. Parse the number out of the URL, then fetch the full PR record
+    // via getPR so the caller gets a consistent shape.
     const out = await this.gh(['pr', 'create', '--base', input.base, '--head', input.head,
-      '--title', input.title, '--body', input.body, '--json', 'number'], input.cwd);
-    const j = JSON.parse(out);
-    return this.getPR(input.cwd, j.number);
+      '--title', input.title, '--body', input.body], input.cwd);
+    const m = out.match(/\/pull\/(\d+)/);
+    if (!m) throw new Error(`gh pr create returned unexpected output: ${out.trim()}`);
+    return this.getPR(input.cwd, Number(m[1]));
   }
 
   async mergePR(cwd: string, n: number, strategy: 'squash' | 'merge' | 'rebase'): Promise<void> {
