@@ -18,13 +18,23 @@ const GIT_TIMEOUT = 30_000;
 const LONG_GIT_TIMEOUT = 120_000;
 
 async function git(args: string[], cwd: string, timeoutMs = GIT_TIMEOUT): Promise<string> {
-  const { stdout } = await exec('git', args, {
-    cwd,
-    timeout: timeoutMs,
-    maxBuffer: 16 * 1024 * 1024,
-    env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
-  });
-  return stdout;
+  try {
+    const { stdout } = await exec('git', args, {
+      cwd,
+      timeout: timeoutMs,
+      maxBuffer: 16 * 1024 * 1024,
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
+    });
+    return stdout;
+  } catch (e) {
+    // execFile rejects with an error whose .stderr often carries the real
+    // explanation (commit-msg hook output, branch-checkout refusals, etc.).
+    // The default error.message only shows the command — stitch stderr in
+    // so the UI banner is actionable instead of "Command failed: git …".
+    const err = e as { stderr?: string; stdout?: string; message?: string };
+    const detail = (err.stderr || err.stdout || '').trim();
+    throw new Error(`git ${args[0]} failed${detail ? ':\n' + detail : ''}`);
+  }
 }
 
 export async function isDirty(worktreePath: string): Promise<boolean> {

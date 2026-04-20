@@ -188,6 +188,31 @@ export default function SessionPage({ id }: { id: string }) {
     prevBusyRef.current = busy;
   }, [busy, refreshGit, refreshTaskCtx]);
 
+  // Pending-op state for task buttons. Save + Merge take several seconds
+  // (claude -p round-trip), and without visible feedback users think the
+  // click did nothing and click again — sometimes racing a second request
+  // past the first. While `pendingOp` is set, we disable the buttons and
+  // swap their label. Cleared when the next taskCtx snapshot arrives or
+  // after a safety timeout.
+  const [pendingOp, setPendingOp] = useState<null | 'saving' | 'merging' | 'discardingChanges' | 'discardingTask'>(null);
+  useEffect(() => {
+    if (!pendingOp) return;
+    // New taskCtx (fresh ahead count / acceptedAt) means the op completed.
+    setPendingOp(null);
+  }, [taskCtx?.aheadTopic, taskCtx?.task.acceptedAt, taskCtx?.task.discardedAt]);
+  useEffect(() => {
+    if (!pendingOp) return;
+    // Safety timeout so the row doesn't stick if an error banner fires and
+    // we miss the update signal.
+    const t = setTimeout(() => setPendingOp(null), 60_000);
+    return () => clearTimeout(t);
+  }, [pendingOp]);
+  useEffect(() => {
+    return subscribe((m) => {
+      if (m.type === 'server.topic.error') setPendingOp(null);
+    });
+  }, []);
+
   // After a task action, poke the server-side git state a couple of times so
   // the button set updates immediately without waiting for the 10s poll.
   const refreshSoon = () => {
@@ -283,33 +308,42 @@ export default function SessionPage({ id }: { id: string }) {
         const isDirty = !!d && (d.staged + d.unstaged + d.untracked > 0);
         const ahead = taskCtx.aheadTopic;
         const canMerge = !isDirty && ahead > 0;
+        const inFlight = pendingOp !== null;
+        const pendingLabel = pendingOp === 'saving' ? 'Saving…' : pendingOp === 'merging' ? 'Merging…' : pendingOp === 'discardingChanges' ? 'Discarding changes…' : pendingOp === 'discardingTask' ? 'Discarding task…' : null;
         return (
           <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-            {isDirty && (
+            {pendingLabel && (
+              <span className="inline-flex items-center gap-1.5 rounded bg-zinc-800 px-2 py-0.5 text-[11px] text-zinc-300">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
+                {pendingLabel}
+              </span>
+            )}
+            {!inFlight && isDirty && (
               <button
                 type="button"
-                onClick={() => { send({ type: 'client.task.save', payload: { sessionId: id } }); refreshSoon(); }}
+                onClick={() => { setPendingOp('saving'); send({ type: 'client.task.save', payload: { sessionId: id } }); refreshSoon(); }}
                 className="rounded bg-blue-700 px-2 py-0.5 text-[11px] text-white hover:bg-blue-600"
                 title="Commit uncommitted changes in this worktree"
               >
                 Save
               </button>
             )}
-            {canMerge && (
+            {!inFlight && canMerge && (
               <button
                 type="button"
-                onClick={() => { send({ type: 'client.task.merge', payload: { sessionId: id } }); refreshSoon(); }}
+                onClick={() => { setPendingOp('merging'); send({ type: 'client.task.merge', payload: { sessionId: id } }); refreshSoon(); }}
                 className="rounded bg-emerald-700 px-2 py-0.5 text-[11px] text-white hover:bg-emerald-600"
                 title={`Merge ${ahead} commit${ahead === 1 ? '' : 's'} into the topic branch`}
               >
                 {taskCtx.task.type === 'attempt' ? 'Merge to topic' : 'Apply fix'}
               </button>
             )}
-            {isDirty && (
+            {!inFlight && isDirty && (
               <button
                 type="button"
                 onClick={() => {
                   if (confirm('Drop all uncommitted changes? Commits are kept.')) {
+                    setPendingOp('discardingChanges');
                     send({ type: 'client.task.discardChanges', payload: { sessionId: id } });
                     refreshSoon();
                   }
@@ -319,19 +353,22 @@ export default function SessionPage({ id }: { id: string }) {
                 Discard changes
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => {
-                if (confirm('Discard this task? Kills the session, removes the worktree, and deletes the branch. Unmerged work is lost.')) {
-                  send({ type: 'client.task.discardHard', payload: { sessionId: id } });
-                  navigate(`/topic/${taskCtx.topic.id}`);
-                }
-              }}
-              className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300 hover:border-red-600 hover:text-red-400"
-            >
-              Discard task
-            </button>
-            {!isDirty && ahead === 0 && (
+            {!inFlight && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm('Discard this task? Kills the session, removes the worktree, and deletes the branch. Unmerged work is lost.')) {
+                    setPendingOp('discardingTask');
+                    send({ type: 'client.task.discardHard', payload: { sessionId: id } });
+                    navigate(`/topic/${taskCtx.topic.id}`);
+                  }
+                }}
+                className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300 hover:border-red-600 hover:text-red-400"
+              >
+                Discard task
+              </button>
+            )}
+            {!inFlight && !isDirty && ahead === 0 && (
               <span className="text-[11px] text-zinc-600" title="Ask Claude to change files to see Save / Merge options">
                 Nothing to save or merge yet.
               </span>

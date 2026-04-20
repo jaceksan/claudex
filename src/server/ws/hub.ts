@@ -131,6 +131,36 @@ export class WsHub {
   private readonly subs = new Map<WebSocket, Set<string>>(); // ws -> sessionIds
   private readonly topicSubs = new Map<WebSocket, Set<string>>(); // ws -> topicIds
   private topicDeps: TopicDeps | null = null;
+  /**
+   * Per-session mutex for git write ops (Save / Merge / Discard changes).
+   * Claude-text-gen takes several seconds and the button stays visible until
+   * the broadcast lands; without this, a double-click fires two concurrent
+   * stageAll+commit flows and the second one fails because the first already
+   * committed. Chain promises per session id so ops serialize automatically.
+   */
+  private readonly opLocks = new Map<string, Promise<void>>();
+
+  private runExclusive(sessionId: string, op: () => Promise<void>): Promise<void> {
+    const prev = this.opLocks.get(sessionId) ?? Promise.resolve();
+    const next = prev.then(op, op);
+    this.opLocks.set(sessionId, next);
+    // Clear the lock entry once the chain drains to avoid unbounded growth.
+    void next.finally(() => { if (this.opLocks.get(sessionId) === next) this.opLocks.delete(sessionId); });
+    return next;
+  }
+
+  /**
+   * Post a short "claudex acted" note into the session's stdin so Claude has
+   * context that git state changed under it and doesn't try to re-commit or
+   * re-merge on the next turn. Best-effort: if the session is not running or
+   * not found, we skip silently — the user can still inspect git log.
+   */
+  private notifySession(sessionId: string, note: string): void {
+    const h = this.manager.get(sessionId);
+    if (!h) return;
+    if (h.state.status === 'ended' || h.state.status === 'crashed' || h.state.status === 'detached') return;
+    try { h.send(`[claudex] ${note}`); } catch { /* best-effort */ }
+  }
 
   constructor(
     private readonly manager: SessionManager,
@@ -439,33 +469,42 @@ export class WsHub {
           if (!topic) return this.send(ws, { type: 'server.topic.error', payload: { message: 'No topic for that task.', ctx: 'save' } });
           const worktreePath = task.worktreePath;
           if (!worktreePath) return this.send(ws, { type: 'server.topic.error', payload: { message: 'Task has no worktree to save in.', ctx: 'save' } });
-          (async () => {
-            if (!(await gitOps.isDirty(worktreePath))) {
-              throw new Error('Nothing to save — no uncommitted changes.');
-            }
-            await gitOps.stageAll(worktreePath);
+          void this.runExclusive(sessionId, async () => {
             try {
-              const diff = await gitOps.stagedDiff(worktreePath);
-              const log = await gitOps.recentLog(worktreePath);
-              const message = await generateCommitMessage({
-                cwd: worktreePath,
-                branch: task.childBranch ?? '',
-                topicTitle: topic.title,
-                taskLabel: task.label,
-                ticketKey: topic.ticketKey,
-                stagedDiff: diff,
-                recentLog: log,
-              });
-              if (!message) throw new Error('Claude returned an empty commit message.');
-              await gitOps.commit(worktreePath, message);
+              if (!(await gitOps.isDirty(worktreePath))) {
+                throw new Error('Nothing to save — no uncommitted changes.');
+              }
+              await gitOps.stageAll(worktreePath);
+              let sha: string;
+              let subject: string;
+              try {
+                const diff = await gitOps.stagedDiff(worktreePath);
+                const log = await gitOps.recentLog(worktreePath);
+                const message = await generateCommitMessage({
+                  cwd: worktreePath,
+                  branch: task.childBranch ?? '',
+                  topicTitle: topic.title,
+                  taskLabel: task.label,
+                  ticketKey: topic.ticketKey,
+                  stagedDiff: diff,
+                  recentLog: log,
+                });
+                if (!message) throw new Error('Claude returned an empty commit message.');
+                const out = await gitOps.commit(worktreePath, message);
+                sha = out.sha;
+                subject = message.split('\n')[0]?.trim() ?? '';
+              } catch (e) {
+                await gitOps.resetStaged(worktreePath);
+                throw e;
+              }
+              this.broadcast(buildTopicState(td));
+              this.broadcastTopicDetail(task.topicId, await buildTopicDetail(task.topicId, td));
+              this.notifySession(sessionId,
+                `Your pending changes were committed by the Save button as ${sha.slice(0, 7)}: ${subject}. No action required — this is an automated note.`,
+              );
             } catch (e) {
-              await gitOps.resetStaged(worktreePath);
-              throw e;
+              this.send(ws, { type: 'server.topic.error', payload: { message: (e as Error).message, ctx: 'save' } });
             }
-            this.broadcast(buildTopicState(td));
-            this.broadcastTopicDetail(task.topicId, await buildTopicDetail(task.topicId, td));
-          })().catch((e: Error) => {
-            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'save' } });
           });
           break;
         }
@@ -517,42 +556,47 @@ export class WsHub {
           const taskBranch = task.childBranch;
           if (!worktreePath || !taskBranch) return this.send(ws, { type: 'server.topic.error', payload: { message: 'Task missing worktree or branch.', ctx: 'merge' } });
           const topicBranch = topic.topicBranch;
-          (async () => {
-            if (await gitOps.isDirty(worktreePath)) {
-              throw new Error('Uncommitted changes in the task worktree — Save or Discard changes first.');
-            }
-            const commits = await gitOps.commitListBetween(repo.path, topicBranch, taskBranch);
-            const diff = await gitOps.combinedDiff(repo.path, topicBranch, taskBranch);
-            const message = await generateMergeCommitMessage({
-              cwd: repo.path,
-              topicBranch,
-              taskBranch,
-              topicTitle: topic.title,
-              taskLabel: task.label,
-              ticketKey: topic.ticketKey,
-              commitList: commits,
-              combinedDiff: diff,
-            });
-            if (!message) throw new Error('Claude returned an empty merge commit message.');
-            await gitOps.squashMergeToTopic({
-              repoPath: repo.path,
-              topicBranch,
-              taskBranch,
-              message,
-              tmpWorktreeRoot: pathJoin(homedir(), '.claudex', 'worktrees'),
-            });
-            // DB bookkeeping (mirrors what the old acceptAttempt did).
-            td.tasks.markAccepted(sessionId);
-            td.topics.setPhase(topic.id, topic.phase === 'Open' ? 'Open' : 'Draft', { acceptedAttemptId: sessionId });
-            for (const t of td.tasks.listByTopic(topic.id)) {
-              if (t.type === 'attempt' && t.sessionId !== sessionId && !t.acceptedAt && !t.discardedAt) {
-                td.tasks.markDiscarded(t.sessionId);
+          void this.runExclusive(sessionId, async () => {
+            try {
+              if (await gitOps.isDirty(worktreePath)) {
+                throw new Error('Uncommitted changes in the task worktree — Save or Discard changes first.');
               }
+              const commits = await gitOps.commitListBetween(repo.path, topicBranch, taskBranch);
+              const diff = await gitOps.combinedDiff(repo.path, topicBranch, taskBranch);
+              const message = await generateMergeCommitMessage({
+                cwd: repo.path,
+                topicBranch,
+                taskBranch,
+                topicTitle: topic.title,
+                taskLabel: task.label,
+                ticketKey: topic.ticketKey,
+                commitList: commits,
+                combinedDiff: diff,
+              });
+              if (!message) throw new Error('Claude returned an empty merge commit message.');
+              const merged = await gitOps.squashMergeToTopic({
+                repoPath: repo.path,
+                topicBranch,
+                taskBranch,
+                message,
+                tmpWorktreeRoot: pathJoin(homedir(), '.claudex', 'worktrees'),
+              });
+              td.tasks.markAccepted(sessionId);
+              td.topics.setPhase(topic.id, topic.phase === 'Open' ? 'Open' : 'Draft', { acceptedAttemptId: sessionId });
+              for (const t of td.tasks.listByTopic(topic.id)) {
+                if (t.type === 'attempt' && t.sessionId !== sessionId && !t.acceptedAt && !t.discardedAt) {
+                  td.tasks.markDiscarded(t.sessionId);
+                }
+              }
+              this.broadcast(buildTopicState(td));
+              this.broadcastTopicDetail(task.topicId, await buildTopicDetail(task.topicId, td));
+              const subject = message.split('\n')[0]?.trim() ?? '';
+              this.notifySession(sessionId,
+                `This task was squash-merged into ${topicBranch} as ${merged.sha.slice(0, 7)}: ${subject}. No action required — this is an automated note.`,
+              );
+            } catch (e) {
+              this.send(ws, { type: 'server.topic.error', payload: { message: (e as Error).message, ctx: 'merge' } });
             }
-            this.broadcast(buildTopicState(td));
-            this.broadcastTopicDetail(task.topicId, await buildTopicDetail(task.topicId, td));
-          })().catch((e: Error) => {
-            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'merge' } });
           });
           break;
         }
