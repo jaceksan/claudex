@@ -81,6 +81,7 @@ export function ActionBar({
   onAddressFeedback,
   onAddAttempt,
   onPush,
+  onClosePR,
   creatingPR = false,
 }: {
   topic: TopicMeta;
@@ -93,6 +94,7 @@ export function ActionBar({
   onAddressFeedback: (includeCi: boolean, includeComments: boolean) => void;
   onAddAttempt: () => void;
   onPush: () => void;
+  onClosePR: () => void;
   creatingPR?: boolean;
 }) {
   const actions = visibleActions(topic, tasks, pr, threads, checks, required);
@@ -167,6 +169,21 @@ export function ActionBar({
           title={`Push ${topic.topicBranch} — topic branch has unpushed commits`}
         >
           Push
+        </button>
+      )}
+
+      {topic.phase === 'Open' && pr && (
+        <button
+          type="button"
+          onClick={() => {
+            if (confirm(`Close PR #${pr.number} without merging? It stays on GitHub in the Closed state and can be reopened there.`)) {
+              onClosePR();
+            }
+          }}
+          className="rounded border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-red-600 hover:text-red-300"
+          title="Close the PR without merging (can be reopened on GitHub)"
+        >
+          Close PR
         </button>
       )}
 

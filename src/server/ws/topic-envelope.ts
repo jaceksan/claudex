@@ -21,6 +21,7 @@ export type TopicClientMessage =
   | { type: 'client.task.merge'; payload: { sessionId: string } }
   | { type: 'client.repo.list'; payload: Record<string, never> }
   | { type: 'client.pr.create'; payload: { topicId: string; title?: string; body?: string } }
+  | { type: 'client.pr.close'; payload: { topicId: string } }
   | { type: 'client.pr.addressFeedback'; payload: { topicId: string; includeCi: boolean; includeComments: boolean } }
   | { type: 'client.pr.fixComment'; payload: { topicId: string; threadId: string } }
   | { type: 'client.pr.fixCheck'; payload: { topicId: string; checkName: string } }

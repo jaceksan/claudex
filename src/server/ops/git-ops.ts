@@ -155,6 +155,21 @@ export async function pushBranch(args: { repoPath: string; remote: string; branc
   return git(['push', '--set-upstream', args.remote, `${args.branch}:${args.branch}`], args.repoPath, LONG_GIT_TIMEOUT);
 }
 
+/**
+ * Close an open PR without merging. `gh pr close` is idempotent: closing an
+ * already-closed PR prints a warning on stderr but exits 0, so the caller
+ * doesn't need to special-case "already closed".
+ */
+export async function closePullRequest(args: {
+  repoPath: string;
+  number: number;
+  comment?: string;
+}): Promise<void> {
+  const argv = ['pr', 'close', String(args.number)];
+  if (args.comment) argv.push('--comment', args.comment);
+  await exec('gh', argv, { cwd: args.repoPath, timeout: LONG_GIT_TIMEOUT, maxBuffer: 16 * 1024 * 1024 });
+}
+
 export async function createPullRequest(args: {
   repoPath: string;
   base: string;

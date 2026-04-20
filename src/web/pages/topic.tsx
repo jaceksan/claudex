@@ -64,6 +64,9 @@ export default function TopicPage({ id }: { id: string }) {
     // Re-subscribe forces the server to rebuild + push fresh detail (incl. CI).
     send({ type: 'client.topic.subscribe', payload: { topicId: id } });
   }
+  function handleClosePR() {
+    send({ type: 'client.pr.close', payload: { topicId: id } });
+  }
   function handleAddressFeedback(includeCi: boolean, includeComments: boolean) {
     send({ type: 'client.pr.addressFeedback', payload: { topicId: id, includeCi, includeComments } });
   }
@@ -148,6 +151,7 @@ export default function TopicPage({ id }: { id: string }) {
         onAddressFeedback={handleAddressFeedback}
         onAddAttempt={handleAddAttempt}
         onPush={handlePushTopic}
+        onClosePR={handleClosePR}
         creatingPR={creatingPR}
       />
       {showAddAttempt && (

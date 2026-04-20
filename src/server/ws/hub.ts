@@ -671,6 +671,32 @@ export class WsHub {
           });
           break;
         }
+        case 'client.pr.close': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          const { topicId } = env.payload;
+          (async () => {
+            const topic = td.topics.getById(topicId);
+            if (!topic) throw new Error('topic not found');
+            if (!topic.prNumber) throw new Error('Topic has no PR to close.');
+            if (topic.phase === 'Merged' || topic.phase === 'Closed') {
+              throw new Error(`Cannot close — PR is already ${topic.phase.toLowerCase()}.`);
+            }
+            const repo = td.repos.getById(topic.repoId)!;
+            await gitOps.closePullRequest({
+              repoPath: repo.path, number: topic.prNumber,
+              comment: 'Closed from claudex.',
+            });
+            td.topics.setPhase(topicId, 'Closed', {});
+            // Stop any CI polling — no reason to keep hitting gh for a closed PR.
+            td.prLifecycle?.stopWatch(topicId);
+            this.broadcast(buildTopicState(td));
+            this.broadcastTopicDetail(topicId, await buildTopicDetail(topicId, td));
+          })().catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'closePR' } });
+          });
+          break;
+        }
         case 'client.pr.addressFeedback': {
           const td = this.topicDeps;
           if (!td) return this.sendError(ws, 'topic support not initialised');

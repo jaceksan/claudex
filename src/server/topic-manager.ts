@@ -6,6 +6,7 @@ import type { TopicStore, TopicTemplate } from './topic.js';
 import type { TaskStore } from './task.js';
 import { renderBranchTemplate } from './branch-template.js';
 import { slugify } from './slug.js';
+import { closePullRequest } from './ops/git-ops.js';
 
 export interface SpawnedSession { id: string; }
 export type Git = (args: string[], cwd?: string) => Promise<string>;
@@ -400,6 +401,22 @@ export class TopicManager {
     const topic = this.d.topics.getById(topicId);
     if (!topic) throw new Error(`topic ${topicId} not found`);
     const repo = this.d.repos.getById(topic.repoId);
+
+    // If the topic still has an *open* PR, close it before tearing everything
+    // down — otherwise the PR is orphaned on GitHub with a dangling head ref.
+    // Merged or Closed PRs are never touched: they're historical and must be
+    // preserved for audit.
+    if (repo && topic.prNumber && topic.phase === 'Open') {
+      try {
+        await closePullRequest({
+          repoPath: repo.path, number: topic.prNumber,
+          comment: 'Closed by claudex — topic deleted.',
+        });
+      } catch (e) {
+        console.warn(`[deleteTopic] could not close PR #${topic.prNumber}:`, (e as Error).message);
+        // Proceed anyway; the local cleanup is more important than a clean remote.
+      }
+    }
 
     // Kill every session attached to this topic (handles in-memory + persisted rows).
     // sessionManager.delete emits 'deleted', which the hub uses to cascade-delete the
