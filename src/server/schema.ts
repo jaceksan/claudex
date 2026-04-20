@@ -91,6 +91,18 @@ export function ensureSchema(db: Database.Database): void {
       PRIMARY KEY (repo_id, check_name),
       FOREIGN KEY (repo_id) REFERENCES repo(id) ON DELETE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS ci_check_history (
+      repo_id TEXT NOT NULL,
+      check_name TEXT NOT NULL,
+      pr_number INTEGER NOT NULL,
+      run_id INTEGER NOT NULL DEFAULT 0,
+      conclusion TEXT NOT NULL,
+      observed_at INTEGER NOT NULL,
+      PRIMARY KEY (repo_id, check_name, pr_number, run_id),
+      FOREIGN KEY (repo_id) REFERENCES repo(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_cch_repo_name_observed
+      ON ci_check_history(repo_id, check_name, observed_at DESC);
     CREATE INDEX IF NOT EXISTS idx_topic_repo ON topic(repo_id);
     CREATE INDEX IF NOT EXISTS idx_task_topic ON task(topic_id);
   `);

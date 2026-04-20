@@ -4,6 +4,7 @@ import type { Task } from './task.js';
 import type { VcsAdapter } from './vcs/adapter.js';
 import type { PrCache, PrBundle } from './pr-cache.js';
 import type { CiRollupState } from './notifications.js';
+import type { CiHistoryStore } from './ci-history.js';
 import { renderActionPrompt } from './skill-invoker.js';
 
 /** Narrow interface to avoid circular import with topic-manager. */
@@ -63,6 +64,8 @@ export class PrLifecycle {
       git: (args: string[], cwd?: string) => Promise<string>;
       topicManager: FixTaskAdder;
       notifications?: CiNotifier;
+      /** Optional CI history recorder — each poll tick writes observed check conclusions so we can classify flakes. */
+      ciHistory?: CiHistoryStore;
       /** Called after any PR-related state change so the hub can re-broadcast the topic detail. */
       onTopicChanged?: (topicId: string) => void;
       /** Override setInterval for tests. Defaults to global setInterval. */
@@ -202,6 +205,17 @@ export class PrLifecycle {
     const topic = this.deps.topics.getById(topicId);
     const nonVoting = topic ? this.deps.repos.listNonVoting(topic.repoId) : [];
     const curr = ciRollup(bundle, nonVoting);
+
+    // Record every completed check into the history store so the flaky
+    // classifier has data to work with. In-flight checks are skipped —
+    // we only want definitive outcomes.
+    if (topic && this.deps.ciHistory) {
+      for (const c of bundle.checks) {
+        if (c.status === 'completed' && c.conclusion) {
+          this.deps.ciHistory.record(topic.repoId, c.name, prNumber, c.runId ?? null, c.conclusion);
+        }
+      }
+    }
 
     const shouldNotify =
       prevState !== null &&

@@ -39,7 +39,7 @@ export default function TopicPage({ id }: { id: string }) {
     );
   }
 
-  const { topic, tasks, pr, threads, checks, required, nonVotingChecks } = detail;
+  const { topic, tasks, pr, threads, checks, required, nonVotingChecks, flakyChecks } = detail;
 
   function handleSaveTask(sessionId: string) {
     send({ type: 'client.task.save', payload: { sessionId } });
@@ -72,6 +72,9 @@ export default function TopicPage({ id }: { id: string }) {
   }
   function handleUnsuppressCheck(checkName: string) {
     send({ type: 'client.repo.unsuppressCheck', payload: { repoId: topic.repoId, checkName } });
+  }
+  function handleRetryCheck(checkName: string) {
+    send({ type: 'client.pr.rerunCheck', payload: { topicId: id, checkName } });
   }
   function handleAddressFeedback(includeCi: boolean, includeComments: boolean) {
     send({ type: 'client.pr.addressFeedback', payload: { topicId: id, includeCi, includeComments } });
@@ -133,6 +136,7 @@ export default function TopicPage({ id }: { id: string }) {
                   checks={checks ?? []}
                   required={required ?? []}
                   nonVotingChecks={nonVotingChecks}
+                  flakyChecks={flakyChecks}
                   watchEnabled={topic.watchCi}
                   // Keep the amber pulse visible from the click through the
                   // first real poll — without this the CI card looks dead
@@ -143,6 +147,7 @@ export default function TopicPage({ id }: { id: string }) {
                   onRefresh={pr ? handleRefreshCI : undefined}
                   onSuppress={handleSuppressCheck}
                   onUnsuppress={handleUnsuppressCheck}
+                  onRetry={handleRetryCheck}
                 />
               )}
             </div>

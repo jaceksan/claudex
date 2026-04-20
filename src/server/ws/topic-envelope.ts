@@ -28,6 +28,7 @@ export type TopicClientMessage =
   | { type: 'client.pr.watch'; payload: { topicId: string; enable: boolean } }
   | { type: 'client.repo.suppressCheck'; payload: { repoId: string; checkName: string; reason?: string } }
   | { type: 'client.repo.unsuppressCheck'; payload: { repoId: string; checkName: string } }
+  | { type: 'client.pr.rerunCheck'; payload: { topicId: string; checkName: string } }
   | { type: 'client.thread.reply'; payload: { topicId: string; threadId: string; body: string } }
   | { type: 'client.session.siblings'; payload: { sessionId: string } };
 
@@ -101,6 +102,8 @@ export interface TopicDetailBundle {
   tasks: TaskRow[];
   /** Check names the user has marked non-voting for this repo. */
   nonVotingChecks: string[];
+  /** Check names classified as flaky from recent history in this repo. */
+  flakyChecks: string[];
   pr?: import('../vcs/adapter.js').PR;
   threads?: import('../vcs/adapter.js').ReviewThread[];
   checks?: import('../vcs/adapter.js').Check[];

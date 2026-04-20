@@ -129,6 +129,13 @@ export class GitHubAdapter implements VcsAdapter {
     await this.gh(['run', 'rerun', String(runId), '--failed'], cwd);
   }
 
+  /** Rerun a workflow run. `failedOnly` (default true) reruns only the failed jobs — much cheaper. */
+  async rerunRun(cwd: string, runId: number, opts: { failedOnly?: boolean } = {}): Promise<void> {
+    const args = ['run', 'rerun', String(runId)];
+    if (opts.failedOnly !== false) args.push('--failed');
+    await this.gh(args, cwd);
+  }
+
   async listCollaborators(cwd: string): Promise<{ login: string; name?: string }[]> {
     const out = await this.gh(['api', 'repos/{owner}/{repo}/collaborators', '--paginate'], cwd);
     return (JSON.parse(out) as Array<{ login: string; name?: string }>).map((c) => ({ login: c.login, name: c.name }));

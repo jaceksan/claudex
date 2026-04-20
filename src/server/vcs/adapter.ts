@@ -65,5 +65,7 @@ export interface VcsAdapter {
   listChecks(cwd: string, ref: string): Promise<Check[]>;
   getRequiredChecks(cwd: string, branch: string): Promise<string[]>;
   rerunFailedChecks(cwd: string, runId: number): Promise<void>;
+  /** Rerun a specific CI run. Used by the "Retry" button on flaky checks. */
+  rerunRun(cwd: string, runId: number, opts?: { failedOnly?: boolean }): Promise<void>;
   listCollaborators(cwd: string): Promise<{ login: string; name?: string }[]>;
 }

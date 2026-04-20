@@ -141,6 +141,27 @@ describe('buildTopicDetail', () => {
     expect(env.payload.nonVotingChecks).toEqual(['lint-experimental', 'sonar']);
   });
 
+  it('surfaces flaky checks from CiHistoryStore into the bundle', async () => {
+    const { CiHistoryStore } = await import('../src/server/ci-history.js');
+    const repo = repos.register({
+      path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin',
+      forkRemote: 'origin', defaultBranch: 'main',
+    });
+    const topic = topics.create({
+      repoId: repo.id, phase: 'Draft', template: 'standard',
+      title: 'T', slug: 't', ticketKey: null, topicBranch: 'jaceksan/t',
+    });
+    const ciHistory = new CiHistoryStore(db);
+    // Seed a flaky pattern for "sonar" and a stably-passing pattern for "lint".
+    ciHistory.record(repo.id, 'sonar', 1, 1, 'success');
+    ciHistory.record(repo.id, 'sonar', 2, 2, 'failure');
+    ciHistory.record(repo.id, 'lint', 1, 1, 'success');
+
+    const env = await buildTopicDetail(topic.id, { ...makeDeps(), ciHistory });
+    if (env.type !== 'server.topic.detail') throw new Error('unexpected envelope');
+    expect(env.payload.flakyChecks).toEqual(['sonar']);
+  });
+
   it('returns empty tasks for topic with no tasks', async () => {
     const repo = repos.register({
       path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin',

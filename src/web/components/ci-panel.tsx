@@ -15,17 +15,21 @@ export function CiPanel({
   watchEnabled,
   loading,
   nonVotingChecks = [],
+  flakyChecks = [],
   onFix,
   onWatchToggle,
   onRefresh,
   onSuppress,
   onUnsuppress,
+  onRetry,
 }: {
   checks: Check[];
   /** Unused; kept in the props for future "mark non-voting" work. */
   required?: string[];
   /** Check names suppressed for this repo — rendered in a dedicated group, kept out of Errors. */
   nonVotingChecks?: string[];
+  /** Check names classified as flaky (mixed pass/fail in recent history). Rendered with a tag on Errors rows. */
+  flakyChecks?: string[];
   watchEnabled: boolean;
   loading?: boolean;
   onFix: (checkName: string) => void;
@@ -33,7 +37,9 @@ export function CiPanel({
   onRefresh?: () => void;
   onSuppress?: (checkName: string, reason?: string) => void;
   onUnsuppress?: (checkName: string) => void;
+  onRetry?: (checkName: string) => void;
 }) {
+  const flakySet = new Set(flakyChecks);
   const [showPassed, setShowPassed] = useState(true);
   const [showSkipped, setShowSkipped] = useState(false);
   const [showSuppressed, setShowSuppressed] = useState(true);
@@ -110,36 +116,61 @@ export function CiPanel({
       {errors.length > 0 && (
         <div className="mb-2 flex flex-col gap-1">
           <div className="text-[10px] uppercase tracking-wide text-red-400">Errors</div>
-          {errors.map((c) => (
-            <div key={c.name} className="flex items-center justify-between rounded border border-red-900/40 bg-red-950/20 px-2 py-1.5">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-red-400">✗</span>
-                <span className="truncate text-xs text-zinc-300 font-mono" title={c.name}>{c.name}</span>
-              </div>
-              <div className="flex shrink-0 items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => onFix(c.name)}
-                  className="rounded bg-red-800 px-2 py-0.5 text-xs text-white hover:bg-red-700"
-                >
-                  Fix
-                </button>
-                {onSuppress && (
+          {errors.map((c) => {
+            const isFlaky = flakySet.has(c.name);
+            return (
+              <div key={c.name} className="flex items-center justify-between rounded border border-red-900/40 bg-red-950/20 px-2 py-1.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-red-400">✗</span>
+                  <span className="truncate text-xs text-zinc-300 font-mono" title={c.name}>{c.name}</span>
+                  {isFlaky && (
+                    <span
+                      className="shrink-0 rounded bg-amber-900/40 px-1.5 py-0 text-[10px] uppercase tracking-wide text-amber-300"
+                      title="Mixed pass/fail in recent runs — probably flaky. Try Retry before Fix."
+                    >
+                      flaky
+                    </span>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
                   <button
                     type="button"
-                    onClick={() => {
-                      const reason = window.prompt(`Stop gating merge on "${c.name}" for this repo?\nOptional reason (for your own records):`, '');
-                      if (reason !== null) onSuppress(c.name, reason.trim() || undefined);
-                    }}
-                    className="rounded border border-zinc-700 px-2 py-0.5 text-xs text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
-                    title="Mark this check non-voting — stays visible but no longer shows as an error"
+                    onClick={() => onFix(c.name)}
+                    className="rounded bg-red-800 px-2 py-0.5 text-xs text-white hover:bg-red-700"
                   >
-                    ⊘ Suppress
+                    Fix
                   </button>
-                )}
+                  {onRetry && c.runId !== undefined && c.runId !== null && (
+                    <button
+                      type="button"
+                      onClick={() => onRetry(c.name)}
+                      className={`rounded border px-2 py-0.5 text-xs ${
+                        isFlaky
+                          ? 'border-amber-600 text-amber-300 hover:border-amber-500 hover:text-amber-200'
+                          : 'border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'
+                      }`}
+                      title="Rerun the failed jobs in this workflow run — cheap first step for flaky infra"
+                    >
+                      ↻ Retry
+                    </button>
+                  )}
+                  {onSuppress && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const reason = window.prompt(`Stop gating merge on "${c.name}" for this repo?\nOptional reason (for your own records):`, '');
+                        if (reason !== null) onSuppress(c.name, reason.trim() || undefined);
+                      }}
+                      className="rounded border border-zinc-700 px-2 py-0.5 text-xs text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                      title="Mark this check non-voting — stays visible but no longer shows as an error"
+                    >
+                      ⊘ Suppress
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

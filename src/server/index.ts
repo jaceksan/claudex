@@ -18,6 +18,7 @@ import { TopicManager } from './topic-manager.js';
 import { RepoStore } from './repo.js';
 import { TopicStore } from './topic.js';
 import { TaskStore } from './task.js';
+import { CiHistoryStore } from './ci-history.js';
 import { createWorktree, resolveGitRoot } from './worktree.js';
 import { getOrFetchGithubLogin } from './identity.js';
 import { GitHubAdapter } from './vcs/github.js';
@@ -78,6 +79,7 @@ const topicManager = new TopicManager({
 
 const ghAdapter = new GitHubAdapter();
 const prCache = new PrCache(ghAdapter);
+const ciHistory = new CiHistoryStore(db.underlying());
 // Forward-referenced because WsHub is constructed after PrLifecycle below.
 // PrLifecycle calls hub.refreshTopicDetail after PR create and each CI poll
 // tick so subscribers see the new prNumber / CI rollup without a page reload.
@@ -88,10 +90,11 @@ const prLifecycle = new PrLifecycle({
   prCache,
   git: async (args, cwd) => execFileP('git', args, { cwd: cwd ?? process.cwd() }).then((r) => r.stdout),
   topicManager,
+  ciHistory,
   onTopicChanged: (topicId) => { void hub?.refreshTopicDetail(topicId); },
 });
 
-const hub: WsHub = new WsHub(manager, notifications, db, transcripts, { topicManager, repos, topics, tasks, rawDb: db.underlying(), prLifecycle, prCache });
+const hub: WsHub = new WsHub(manager, notifications, db, transcripts, { topicManager, repos, topics, tasks, rawDb: db.underlying(), prLifecycle, prCache, ciHistory, ghAdapter });
 
 // Auto-accept + auto-PR for quick-fix topics on session success.
 manager.on('ended', (h) => {

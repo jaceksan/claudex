@@ -19,6 +19,7 @@ import * as gitOps from '../ops/git-ops.js';
 import { generateCommitMessage, generateMergeCommitMessage, generatePrDescription } from '../ops/text-gen.js';
 import { homedir } from 'node:os';
 import { join as pathJoin } from 'node:path';
+import type { CiHistoryStore } from '../ci-history.js';
 
 const execFileP = promisify(execFile);
 
@@ -30,6 +31,8 @@ export interface TopicDeps {
   rawDb: Database.Database;
   prLifecycle?: PrLifecycle;
   prCache?: PrCache;
+  ciHistory?: CiHistoryStore;
+  ghAdapter?: import('../vcs/adapter.js').VcsAdapter;
 }
 
 function topicTaskSummary(tasks: TaskStore, rawDb: Database.Database, topicId: string) {
@@ -115,8 +118,9 @@ export async function buildTopicDetail(topicId: string, deps: TopicDeps): Promis
   }
 
   const nonVotingChecks = deps.repos.listNonVoting(topic.repoId);
+  const flakyChecks = deps.ciHistory ? deps.ciHistory.flakyChecksForRepo(topic.repoId) : [];
 
-  const bundle: TopicDetailBundle = { topicId, topic: topicCard, tasks: taskRows, nonVotingChecks };
+  const bundle: TopicDetailBundle = { topicId, topic: topicCard, tasks: taskRows, nonVotingChecks, flakyChecks };
 
   if ((topic.phase === 'Open' || topic.phase === 'Draft') && topic.prNumber && deps.prCache && repo) {
     try {
@@ -751,6 +755,28 @@ export class WsHub {
             this.broadcastTopicDetail(topicId, detail);
           }).catch((e: Error) => {
             this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'watch' } });
+          });
+          break;
+        }
+        case 'client.pr.rerunCheck': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          if (!td.prCache || !td.ghAdapter) return this.sendError(ws, 'PR infrastructure not initialised');
+          const { topicId, checkName } = env.payload;
+          (async () => {
+            const topic = td.topics.getById(topicId);
+            if (!topic || !topic.prNumber) throw new Error('Topic has no open PR.');
+            const repo = td.repos.getById(topic.repoId)!;
+            const bundle = await td.prCache!.get(repo.path, topic.prNumber, repo.defaultBranch);
+            const check = bundle.checks.find((c) => c.name === checkName);
+            if (!check) throw new Error(`Check ${checkName} not found.`);
+            if (!check.runId) throw new Error(`Check ${checkName} has no run id — cannot rerun.`);
+            await td.ghAdapter!.rerunRun(repo.path, check.runId, { failedOnly: true });
+            // Invalidate cache so the next poll (or manual refresh) picks up the new state.
+            td.prCache!.invalidate(repo.path, topic.prNumber);
+            this.broadcastTopicDetail(topicId, await buildTopicDetail(topicId, td));
+          })().catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'rerunCheck' } });
           });
           break;
         }
