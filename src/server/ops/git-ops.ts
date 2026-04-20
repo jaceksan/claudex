@@ -101,6 +101,26 @@ export async function aheadCount(repoPath: string, base: string, head: string): 
   return Number(out) || 0;
 }
 
+/**
+ * True when `branch` has commits that aren't on its upstream tracking ref
+ * yet. Falls back to "is there anything beyond the canonical default" when
+ * no upstream is set (first push). Returns false on any git error — safer
+ * to hide the Push button than to offer an action that will fail.
+ */
+export async function hasUnpushedCommits(repoPath: string, branch: string, canonicalRef: string): Promise<boolean> {
+  try {
+    const out = (await git(['rev-list', '--count', `${branch}@{u}..${branch}`], repoPath)).trim();
+    return Number(out) > 0;
+  } catch {
+    try {
+      const out = (await git(['rev-list', '--count', `${canonicalRef}..${branch}`], repoPath)).trim();
+      return Number(out) > 0;
+    } catch {
+      return false;
+    }
+  }
+}
+
 export interface SquashMergeArgs {
   repoPath: string;
   topicBranch: string;

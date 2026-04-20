@@ -88,6 +88,12 @@ export interface TopicDetailBundle {
     slug: string;
     repoPath: string;
     repoDefaultBranch: string;
+    /**
+     * True when the topic branch has commits that aren't yet on the fork
+     * remote (or the branch has never been pushed). Drives Push-button
+     * visibility so we don't offer the action when there's nothing to push.
+     */
+    canPush: boolean;
   };
   tasks: TaskRow[];
   pr?: import('../vcs/adapter.js').PR;

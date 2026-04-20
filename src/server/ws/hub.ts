@@ -79,6 +79,10 @@ export async function buildTopicDetail(topicId: string, deps: TopicDeps): Promis
     ? (deps.rawDb.prepare('SELECT last_event_at FROM sessions WHERE id=?').get(lastTask.sessionId) as { last_event_at?: number } | undefined)?.last_event_at ?? topic.createdAt
     : topic.createdAt;
 
+  const canPush = topic.topicBranch
+    ? await gitOps.hasUnpushedCommits(repo.path, topic.topicBranch, `${repo.canonicalRemote}/${repo.defaultBranch}`)
+    : false;
+
   const topicCard: TopicDetailBundle['topic'] = {
     id: topic.id, repoId: topic.repoId,
     repoName: repo.path.split('/').filter(Boolean).pop() ?? repo.path,
@@ -91,6 +95,7 @@ export async function buildTopicDetail(topicId: string, deps: TopicDeps): Promis
     slug: topic.slug,
     repoPath: repo.path,
     repoDefaultBranch: repo.defaultBranch,
+    canPush,
   };
 
   const taskRows: TaskRow[] = deps.tasks.listByTopic(topicId).map((t) => {

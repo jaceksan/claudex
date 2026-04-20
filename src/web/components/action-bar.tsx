@@ -159,12 +159,12 @@ export function ActionBar({
         </button>
       )}
 
-      {topic.phase !== 'Exploring' && topic.topicBranch && (
+      {topic.phase !== 'Exploring' && topic.topicBranch && topic.canPush && (
         <button
           type="button"
           onClick={onPush}
           className="rounded border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
-          title={`Push ${topic.topicBranch} to ${topic.topicBranch.split('/')[0] === topic.topicBranch ? 'origin' : 'fork'}`}
+          title={`Push ${topic.topicBranch} — topic branch has unpushed commits`}
         >
           Push
         </button>
