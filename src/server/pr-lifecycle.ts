@@ -37,7 +37,7 @@ export function ciRollup(bundle: PrBundle): CiRollupState {
 
 export class PrLifecycle {
   /** In-memory map of active CI poll intervals keyed by topicId. */
-  private readonly ciPollers = new Map<string, ReturnType<typeof setInterval>>();
+  private readonly ciPollers = new Map<string, ReturnType<typeof setTimeout>>();
 
   /**
    * Injectable timer functions — overridden in tests via fake timers or by
@@ -45,6 +45,8 @@ export class PrLifecycle {
    */
   private _setInterval: typeof setInterval;
   private _clearInterval: typeof clearInterval;
+  private _setTimeout: typeof setTimeout;
+  private _clearTimeout: typeof clearTimeout;
 
   constructor(
     private deps: {
@@ -61,10 +63,16 @@ export class PrLifecycle {
       setInterval?: typeof setInterval;
       /** Override clearInterval for tests. Defaults to global clearInterval. */
       clearInterval?: typeof clearInterval;
+      /** Override setTimeout for tests. Defaults to global setTimeout. */
+      setTimeout?: typeof setTimeout;
+      /** Override clearTimeout for tests. Defaults to global clearTimeout. */
+      clearTimeout?: typeof clearTimeout;
     }
   ) {
     this._setInterval = deps.setInterval ?? setInterval;
     this._clearInterval = deps.clearInterval ?? clearInterval;
+    this._setTimeout = deps.setTimeout ?? setTimeout;
+    this._clearTimeout = deps.clearTimeout ?? clearTimeout;
   }
 
   /**
@@ -125,26 +133,37 @@ export class PrLifecycle {
     if (!topic.prNumber) return; // no PR yet; skip — watch will be re-armed when PR is available
 
     const repo = this.deps.repos.getById(topic.repoId)!;
+    const startedAt = Date.now();
+    const HARD_DEADLINE_MS = 60 * 60 * 1000; // stop after 1h regardless of state
 
     let prevState: CiRollupState | null = null;
+
+    // Self-scheduling poll loop. Cadence: 20s for the first minute (fresh PR
+    // window where GitHub is still spinning up workflows), then 60s. Stop
+    // early when every check is completed — no further state to observe —
+    // or when the 1h hard deadline fires.
+    const pickDelay = (): number => (Date.now() - startedAt < 60_000 ? 20_000 : 60_000);
 
     const tick = async () => {
       await this._pollCi(topicId, repo.path, topic.prNumber!, repo.defaultBranch, prevState, (curr) => {
         prevState = curr;
       });
-      // Fresh checks data in prCache; re-broadcast so CI panel on the topic
-      // page updates without needing the user to navigate away and back.
       this.deps.onTopicChanged?.(topicId);
+      // Decide whether to stop: use the fresh cache bundle as the ground truth.
+      try {
+        const bundle = await this.deps.prCache.get(repo.path, topic.prNumber!, repo.defaultBranch);
+        const allDone = bundle.checks.length > 0 && bundle.checks.every((c) => c.status === 'completed');
+        if (allDone) { this.stopWatch(topicId); return; }
+      } catch { /* transient — schedule next tick anyway */ }
+      if (Date.now() - startedAt >= HARD_DEADLINE_MS) { this.stopWatch(topicId); return; }
+      const handle = (this._setTimeout ?? setTimeout)(() => {
+        tick().catch((e) => console.error(`[ci-watch] poll error for ${topicId}:`, e));
+      }, pickDelay());
+      this.ciPollers.set(topicId, handle);
     };
 
-    // Do an initial poll immediately so we have a baseline state.
+    // Prime with an immediate poll; tick() itself schedules the next one.
     await tick();
-
-    const handle = this._setInterval(() => {
-      tick().catch((e) => console.error(`[ci-watch] poll error for ${topicId}:`, e));
-    }, 120_000);
-
-    this.ciPollers.set(topicId, handle);
   }
 
   /**
@@ -154,7 +173,9 @@ export class PrLifecycle {
   stopWatch(topicId: string): void {
     const handle = this.ciPollers.get(topicId);
     if (handle !== undefined) {
-      this._clearInterval(handle);
+      // Handle may be from either setInterval (legacy) or setTimeout (new cadence);
+      // both return the same node Timeout object so either clear function works.
+      this._clearTimeout(handle as ReturnType<typeof setTimeout>);
       this.ciPollers.delete(topicId);
     }
   }

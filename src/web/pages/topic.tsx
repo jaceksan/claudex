@@ -124,7 +124,10 @@ export default function TopicPage({ id }: { id: string }) {
                   checks={checks ?? []}
                   required={required ?? []}
                   watchEnabled={topic.watchCi}
-                  loading={creatingPR && !pr}
+                  // Keep the amber pulse visible from the click through the
+                  // first real poll — without this the CI card looks dead
+                  // for up to ~20 seconds.
+                  loading={creatingPR || (!!pr && (checks ?? []).length === 0)}
                   onFix={handleFixCheck}
                   onWatchToggle={handleWatchToggle}
                   onRefresh={pr ? handleRefreshCI : undefined}

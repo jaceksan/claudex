@@ -720,7 +720,7 @@ describe('PrLifecycle CI watch', () => {
     expect(notifier.calls).toHaveLength(0);
   });
 
-  it('stopWatch clears the interval and removes from map', async () => {
+  it('stopWatch clears the pending timeout and removes from map', async () => {
     const repo = repos.register({ path: '/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'fork', defaultBranch: 'main' });
     const topic = makeOpenTopic(repo.id);
 
@@ -735,8 +735,8 @@ describe('PrLifecycle CI watch', () => {
       git: async () => '',
       topicManager: { addFixTask: vi.fn().mockResolvedValue({ sessionId: 'x' }) },
       notifications: notifier,
-      setInterval: (() => 99 as unknown as ReturnType<typeof setInterval>),
-      clearInterval: ((h) => cleared.push(h)),
+      setTimeout: (() => 99 as unknown as ReturnType<typeof setTimeout>),
+      clearTimeout: ((h) => cleared.push(h)),
     });
 
     await lifecycle.watchCi(topic.id, true);
@@ -752,7 +752,7 @@ describe('PrLifecycle CI watch', () => {
     const repo = repos.register({ path: '/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'fork', defaultBranch: 'main' });
     const topic = makeOpenTopic(repo.id);
 
-    let setIntervalCalls = 0;
+    let setTimeoutCalls = 0;
     const lifecycle = new PrLifecycle({
       repos, topics,
       adapter: () => ({ kind: 'github' } as VcsAdapter),
@@ -763,13 +763,15 @@ describe('PrLifecycle CI watch', () => {
       git: async () => '',
       topicManager: { addFixTask: vi.fn().mockResolvedValue({ sessionId: 'x' }) },
       notifications: notifier,
-      setInterval: (() => { setIntervalCalls++; return setIntervalCalls as unknown as ReturnType<typeof setInterval>; }),
-      clearInterval: (() => {}),
+      setTimeout: (() => { setTimeoutCalls++; return setTimeoutCalls as unknown as ReturnType<typeof setTimeout>; }),
+      clearTimeout: (() => {}),
     });
 
     await lifecycle.watchCi(topic.id, true);
     await lifecycle.watchCi(topic.id, true); // second enable — should be a no-op
 
-    expect(setIntervalCalls).toBe(1);
+    // One tick fires each watchCi, and only the first schedules a follow-up
+    // (the second is a no-op because the poller map already has an entry).
+    expect(setTimeoutCalls).toBe(1);
   });
 });
