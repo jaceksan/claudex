@@ -26,6 +26,8 @@ export type TopicClientMessage =
   | { type: 'client.pr.fixComment'; payload: { topicId: string; threadId: string } }
   | { type: 'client.pr.fixCheck'; payload: { topicId: string; checkName: string } }
   | { type: 'client.pr.watch'; payload: { topicId: string; enable: boolean } }
+  | { type: 'client.repo.suppressCheck'; payload: { repoId: string; checkName: string; reason?: string } }
+  | { type: 'client.repo.unsuppressCheck'; payload: { repoId: string; checkName: string } }
   | { type: 'client.thread.reply'; payload: { topicId: string; threadId: string; body: string } }
   | { type: 'client.session.siblings'; payload: { sessionId: string } };
 
@@ -97,6 +99,8 @@ export interface TopicDetailBundle {
     canPush: boolean;
   };
   tasks: TaskRow[];
+  /** Check names the user has marked non-voting for this repo. */
+  nonVotingChecks: string[];
   pr?: import('../vcs/adapter.js').PR;
   threads?: import('../vcs/adapter.js').ReviewThread[];
   checks?: import('../vcs/adapter.js').Check[];

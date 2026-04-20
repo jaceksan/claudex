@@ -83,6 +83,14 @@ export function ensureSchema(db: Database.Database): void {
       github_login TEXT,
       preferred_template TEXT NOT NULL DEFAULT 'standard'
     );
+    CREATE TABLE IF NOT EXISTS repo_nonvoting_check (
+      repo_id TEXT NOT NULL,
+      check_name TEXT NOT NULL,
+      reason TEXT,
+      suppressed_at INTEGER NOT NULL,
+      PRIMARY KEY (repo_id, check_name),
+      FOREIGN KEY (repo_id) REFERENCES repo(id) ON DELETE CASCADE
+    );
     CREATE INDEX IF NOT EXISTS idx_topic_repo ON topic(repo_id);
     CREATE INDEX IF NOT EXISTS idx_task_topic ON task(topic_id);
   `);

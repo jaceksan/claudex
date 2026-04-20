@@ -14,27 +14,38 @@ export function CiPanel({
   checks,
   watchEnabled,
   loading,
+  nonVotingChecks = [],
   onFix,
   onWatchToggle,
   onRefresh,
+  onSuppress,
+  onUnsuppress,
 }: {
   checks: Check[];
   /** Unused; kept in the props for future "mark non-voting" work. */
   required?: string[];
+  /** Check names suppressed for this repo — rendered in a dedicated group, kept out of Errors. */
+  nonVotingChecks?: string[];
   watchEnabled: boolean;
   loading?: boolean;
   onFix: (checkName: string) => void;
   onWatchToggle: (enable: boolean) => void;
   onRefresh?: () => void;
+  onSuppress?: (checkName: string, reason?: string) => void;
+  onUnsuppress?: (checkName: string) => void;
 }) {
   const [showPassed, setShowPassed] = useState(true);
   const [showSkipped, setShowSkipped] = useState(false);
+  const [showSuppressed, setShowSuppressed] = useState(true);
 
+  const suppressedSet = new Set(nonVotingChecks);
   const sorted = checks.slice().sort((a, b) => a.name.localeCompare(b.name));
-  const errors = sorted.filter((c) => bucketOf(c) === 'errors');
-  const running = sorted.filter((c) => bucketOf(c) === 'running');
-  const passed = sorted.filter((c) => bucketOf(c) === 'passed');
-  const skipped = sorted.filter((c) => bucketOf(c) === 'skipped');
+  const suppressed = sorted.filter((c) => suppressedSet.has(c.name));
+  const active = sorted.filter((c) => !suppressedSet.has(c.name));
+  const errors = active.filter((c) => bucketOf(c) === 'errors');
+  const running = active.filter((c) => bucketOf(c) === 'running');
+  const passed = active.filter((c) => bucketOf(c) === 'passed');
+  const skipped = active.filter((c) => bucketOf(c) === 'skipped');
 
   const anyRunning = running.length > 0;
   const rollup: 'passing' | 'failing' | 'pending' =
@@ -101,19 +112,67 @@ export function CiPanel({
           <div className="text-[10px] uppercase tracking-wide text-red-400">Errors</div>
           {errors.map((c) => (
             <div key={c.name} className="flex items-center justify-between rounded border border-red-900/40 bg-red-950/20 px-2 py-1.5">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 min-w-0">
                 <span className="text-red-400">✗</span>
-                <span className="text-xs text-zinc-300 font-mono">{c.name}</span>
+                <span className="truncate text-xs text-zinc-300 font-mono" title={c.name}>{c.name}</span>
               </div>
-              <button
-                type="button"
-                onClick={() => onFix(c.name)}
-                className="rounded bg-red-800 px-2 py-0.5 text-xs text-white hover:bg-red-700"
-              >
-                Fix
-              </button>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => onFix(c.name)}
+                  className="rounded bg-red-800 px-2 py-0.5 text-xs text-white hover:bg-red-700"
+                >
+                  Fix
+                </button>
+                {onSuppress && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const reason = window.prompt(`Stop gating merge on "${c.name}" for this repo?\nOptional reason (for your own records):`, '');
+                      if (reason !== null) onSuppress(c.name, reason.trim() || undefined);
+                    }}
+                    className="rounded border border-zinc-700 px-2 py-0.5 text-xs text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                    title="Mark this check non-voting — stays visible but no longer shows as an error"
+                  >
+                    ⊘ Suppress
+                  </button>
+                )}
+              </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {suppressed.length > 0 && (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setShowSuppressed((v) => !v)}
+            className="text-[10px] uppercase tracking-wide text-zinc-400 hover:text-zinc-200"
+          >
+            {showSuppressed ? '▾' : '▸'} Suppressed ({suppressed.length})
+          </button>
+          {showSuppressed && (
+            <div className="mt-0.5 flex flex-col gap-0.5">
+              {suppressed.map((c) => (
+                <div key={c.name} className="flex items-center gap-2 px-2 py-1 text-xs text-zinc-500">
+                  <span className="text-zinc-500">⊘</span>
+                  <span className="truncate font-mono" title={c.name}>{c.name}</span>
+                  <span className="ml-auto text-[10px] text-zinc-600">non-voting</span>
+                  {onUnsuppress && (
+                    <button
+                      type="button"
+                      onClick={() => onUnsuppress(c.name)}
+                      className="rounded border border-zinc-700 px-1.5 py-0 text-[10px] text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                      title="Restore as a normal check"
+                    >
+                      restore
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

@@ -121,4 +121,33 @@ export class RepoStore {
       createdAt: r.created_at as number,
     };
   }
+
+  /**
+   * Non-voting CI check overrides per repo. These names are excluded from the
+   * failure rollup on the topic page so a known-flaky or slow branch-
+   * protection-required check doesn't show as a red gate. Separate table
+   * (repo_nonvoting_check) so the write path is cheap and FK-cascaded on
+   * repo deletion.
+   */
+  listNonVoting(repoId: string): string[] {
+    const rows = this.db.prepare('SELECT check_name FROM repo_nonvoting_check WHERE repo_id=? ORDER BY check_name')
+      .all(repoId) as { check_name: string }[];
+    return rows.map((r) => r.check_name);
+  }
+
+  listNonVotingDetailed(repoId: string): { checkName: string; reason: string | null; suppressedAt: number }[] {
+    const rows = this.db.prepare('SELECT check_name, reason, suppressed_at FROM repo_nonvoting_check WHERE repo_id=? ORDER BY check_name')
+      .all(repoId) as { check_name: string; reason: string | null; suppressed_at: number }[];
+    return rows.map((r) => ({ checkName: r.check_name, reason: r.reason, suppressedAt: r.suppressed_at }));
+  }
+
+  addNonVoting(repoId: string, checkName: string, reason?: string | null): void {
+    this.db.prepare(`INSERT OR REPLACE INTO repo_nonvoting_check
+      (repo_id, check_name, reason, suppressed_at) VALUES (?, ?, ?, ?)`)
+      .run(repoId, checkName, reason ?? null, Date.now());
+  }
+
+  removeNonVoting(repoId: string, checkName: string): void {
+    this.db.prepare('DELETE FROM repo_nonvoting_check WHERE repo_id=? AND check_name=?').run(repoId, checkName);
+  }
 }

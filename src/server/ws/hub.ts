@@ -114,7 +114,9 @@ export async function buildTopicDetail(topicId: string, deps: TopicDeps): Promis
     try { await deps.topicManager.reconcileMergedAttempts(topicId); } catch { /* best-effort */ }
   }
 
-  const bundle: TopicDetailBundle = { topicId, topic: topicCard, tasks: taskRows };
+  const nonVotingChecks = deps.repos.listNonVoting(topic.repoId);
+
+  const bundle: TopicDetailBundle = { topicId, topic: topicCard, tasks: taskRows, nonVotingChecks };
 
   if ((topic.phase === 'Open' || topic.phase === 'Draft') && topic.prNumber && deps.prCache && repo) {
     try {
@@ -749,6 +751,35 @@ export class WsHub {
             this.broadcastTopicDetail(topicId, detail);
           }).catch((e: Error) => {
             this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'watch' } });
+          });
+          break;
+        }
+        case 'client.repo.suppressCheck':
+        case 'client.repo.unsuppressCheck': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          const { repoId, checkName } = env.payload;
+          const reason = env.type === 'client.repo.suppressCheck' ? env.payload.reason : undefined;
+          (async () => {
+            if (env.type === 'client.repo.suppressCheck') {
+              td.repos.addNonVoting(repoId, checkName, reason);
+            } else {
+              td.repos.removeNonVoting(repoId, checkName);
+            }
+            // Suppression is repo-scoped — every topic in the repo must refresh
+            // so its CI panel reflects the new set. Dashboard summary also.
+            this.broadcast(buildTopicState(td));
+            for (const t of td.topics.listByRepo(repoId)) {
+              try {
+                const detail = await buildTopicDetail(t.id, td);
+                this.broadcastTopicDetail(t.id, detail);
+              } catch { /* best-effort */ }
+            }
+          })().catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: {
+              message: e.message,
+              ctx: env.type === 'client.repo.suppressCheck' ? 'suppress' : 'unsuppress',
+            } });
           });
           break;
         }

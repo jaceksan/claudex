@@ -568,6 +568,16 @@ describe('ciRollup', () => {
     const nonRequired: Check = { name: 'e2e', status: 'completed', conclusion: 'failure', runId: 2, url: '', startedAt: null, completedAt: null };
     expect(ciRollup(makeBundle([required, nonRequired], ['ci']))).toBe('ok');
   });
+
+  it('treats a suppressed failing required check as ok', () => {
+    const pass: Check = { name: 'ci', status: 'completed', conclusion: 'success', runId: 1, url: '', startedAt: null, completedAt: null };
+    const flaky: Check = { name: 'sonar', status: 'completed', conclusion: 'failure', runId: 2, url: '', startedAt: null, completedAt: null };
+    // Both are required at the branch-protection level, but the user has
+    // marked `sonar` non-voting for this repo — rollup must ignore it.
+    expect(ciRollup(makeBundle([pass, flaky], ['ci', 'sonar']), ['sonar'])).toBe('ok');
+    // Without the override it's failing — confirms the filter is doing the work.
+    expect(ciRollup(makeBundle([pass, flaky], ['ci', 'sonar']))).toBe('failed');
+  });
 });
 
 // ---------------------------------------------------------------------------

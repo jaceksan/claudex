@@ -124,6 +124,23 @@ describe('buildTopicDetail', () => {
     await expect(buildTopicDetail('no-such-id', makeDeps())).rejects.toThrow('topic no-such-id not found');
   });
 
+  it('surfaces non-voting check overrides from RepoStore into the bundle', async () => {
+    const repo = repos.register({
+      path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin',
+      forkRemote: 'origin', defaultBranch: 'main',
+    });
+    const topic = topics.create({
+      repoId: repo.id, phase: 'Draft', template: 'standard',
+      title: 'T', slug: 't', ticketKey: null, topicBranch: 'jaceksan/t',
+    });
+    repos.addNonVoting(repo.id, 'sonar', 'known flaky');
+    repos.addNonVoting(repo.id, 'lint-experimental');
+
+    const env = await buildTopicDetail(topic.id, makeDeps());
+    if (env.type !== 'server.topic.detail') throw new Error('unexpected envelope');
+    expect(env.payload.nonVotingChecks).toEqual(['lint-experimental', 'sonar']);
+  });
+
   it('returns empty tasks for topic with no tasks', async () => {
     const repo = repos.register({
       path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin',

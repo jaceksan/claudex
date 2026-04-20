@@ -37,4 +37,34 @@ describe('RepoStore', () => {
     const r2 = store.getById(r.id)!;
     expect(r2.skills).toEqual({ commit: '/commit', 'pr-create': '/pr-create' });
   });
+
+  it('non-voting checks CRUD + idempotency + repo-scoped', () => {
+    const a = store.register({ path: '/tmp/a', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin', defaultBranch: 'main' });
+    const b = store.register({ path: '/tmp/b', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin', defaultBranch: 'main' });
+
+    // Initially empty per repo.
+    expect(store.listNonVoting(a.id)).toEqual([]);
+    expect(store.listNonVoting(b.id)).toEqual([]);
+
+    // Add with and without reason; ordering is alphabetical.
+    store.addNonVoting(a.id, 'sonar', 'flaky');
+    store.addNonVoting(a.id, 'lint-experimental');
+    expect(store.listNonVoting(a.id)).toEqual(['lint-experimental', 'sonar']);
+    expect(store.listNonVoting(b.id)).toEqual([]); // scoped per repo
+
+    const detailed = store.listNonVotingDetailed(a.id);
+    expect(detailed.map((d) => d.checkName)).toEqual(['lint-experimental', 'sonar']);
+    expect(detailed.find((d) => d.checkName === 'sonar')?.reason).toBe('flaky');
+    expect(detailed.find((d) => d.checkName === 'lint-experimental')?.reason).toBeNull();
+
+    // Re-adding the same name replaces (INSERT OR REPLACE) — no duplicates.
+    store.addNonVoting(a.id, 'sonar', 'slow');
+    const fresh = store.listNonVotingDetailed(a.id).find((d) => d.checkName === 'sonar');
+    expect(fresh?.reason).toBe('slow');
+    expect(store.listNonVoting(a.id)).toHaveLength(2);
+
+    // Remove clears only the matching row.
+    store.removeNonVoting(a.id, 'sonar');
+    expect(store.listNonVoting(a.id)).toEqual(['lint-experimental']);
+  });
 });

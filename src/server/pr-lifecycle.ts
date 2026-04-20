@@ -26,9 +26,15 @@ export interface CiNotifier {
   ciStateChanged(topic: { id: string; title: string }, prev: CiRollupState, curr: CiRollupState): void;
 }
 
-/** Derive a simple 3-state rollup from a PR bundle's required checks. */
-export function ciRollup(bundle: PrBundle): CiRollupState {
-  const required = bundle.checks.filter((c) => bundle.requiredContexts.includes(c.name));
+/**
+ * Derive a simple 3-state rollup from a PR bundle's required checks,
+ * filtering out names the user has marked non-voting for the repo so a
+ * known-flaky required check doesn't keep firing "CI failed" notifications.
+ */
+export function ciRollup(bundle: PrBundle, nonVotingChecks: readonly string[] = []): CiRollupState {
+  const required = bundle.checks.filter(
+    (c) => bundle.requiredContexts.includes(c.name) && !nonVotingChecks.includes(c.name),
+  );
   if (required.length === 0) return 'running'; // no info yet — treat as pending
   if (required.some((c) => c.conclusion === 'failure')) return 'failed';
   if (required.every((c) => c.conclusion === 'success')) return 'ok';
@@ -193,8 +199,9 @@ export class PrLifecycle {
     onState: (curr: CiRollupState) => void,
   ): Promise<CiRollupState> {
     const bundle = await this.deps.prCache.get(repoCwd, prNumber, defaultBranch, true);
-    const curr = ciRollup(bundle);
     const topic = this.deps.topics.getById(topicId);
+    const nonVoting = topic ? this.deps.repos.listNonVoting(topic.repoId) : [];
+    const curr = ciRollup(bundle, nonVoting);
 
     const shouldNotify =
       prevState !== null &&

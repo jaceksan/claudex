@@ -39,7 +39,7 @@ export default function TopicPage({ id }: { id: string }) {
     );
   }
 
-  const { topic, tasks, pr, threads, checks, required } = detail;
+  const { topic, tasks, pr, threads, checks, required, nonVotingChecks } = detail;
 
   function handleSaveTask(sessionId: string) {
     send({ type: 'client.task.save', payload: { sessionId } });
@@ -66,6 +66,12 @@ export default function TopicPage({ id }: { id: string }) {
   }
   function handleClosePR() {
     send({ type: 'client.pr.close', payload: { topicId: id } });
+  }
+  function handleSuppressCheck(checkName: string, reason?: string) {
+    send({ type: 'client.repo.suppressCheck', payload: { repoId: topic.repoId, checkName, reason } });
+  }
+  function handleUnsuppressCheck(checkName: string) {
+    send({ type: 'client.repo.unsuppressCheck', payload: { repoId: topic.repoId, checkName } });
   }
   function handleAddressFeedback(includeCi: boolean, includeComments: boolean) {
     send({ type: 'client.pr.addressFeedback', payload: { topicId: id, includeCi, includeComments } });
@@ -126,6 +132,7 @@ export default function TopicPage({ id }: { id: string }) {
                 <CiPanel
                   checks={checks ?? []}
                   required={required ?? []}
+                  nonVotingChecks={nonVotingChecks}
                   watchEnabled={topic.watchCi}
                   // Keep the amber pulse visible from the click through the
                   // first real poll — without this the CI card looks dead
@@ -134,6 +141,8 @@ export default function TopicPage({ id }: { id: string }) {
                   onFix={handleFixCheck}
                   onWatchToggle={handleWatchToggle}
                   onRefresh={pr ? handleRefreshCI : undefined}
+                  onSuppress={handleSuppressCheck}
+                  onUnsuppress={handleUnsuppressCheck}
                 />
               )}
             </div>
