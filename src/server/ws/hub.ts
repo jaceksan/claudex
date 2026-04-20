@@ -15,7 +15,10 @@ import type Database from 'better-sqlite3';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { isEffortLevel } from '../session/state.js';
-import { savePrompt, mergePrompt, pushPrompt, openPrPrompt } from './task-prompts.js';
+import * as gitOps from '../ops/git-ops.js';
+import { generateCommitMessage, generateMergeCommitMessage, generatePrDescription } from '../ops/text-gen.js';
+import { homedir } from 'node:os';
+import { join as pathJoin } from 'node:path';
 
 const execFileP = promisify(execFile);
 
@@ -96,19 +99,13 @@ export async function buildTopicDetail(topicId: string, deps: TopicDeps): Promis
     };
   });
 
-  const deliveryTask = taskRows.find((t) => t.type === 'delivery' && !t.discardedAt);
-  const deliverable = deps.topicManager
-    ? await deps.topicManager.computeDeliverable(topicId).catch((): { ok: false; reasons: string[] } => ({
-        ok: false, reasons: ['Could not determine deliverable state.'],
-      }))
-    : { ok: false, reasons: ['Topic manager not initialised.'] };
+  // Passive auto-reconcile of previously-merged attempts still happens so the
+  // topic page converges when an attempt's patch lands on the topic branch.
+  if (deps.topicManager) {
+    try { await deps.topicManager.reconcileMergedAttempts(topicId); } catch { /* best-effort */ }
+  }
 
-  const bundle: TopicDetailBundle = {
-    topicId, topic: topicCard, tasks: taskRows,
-    deliverable,
-    deliverySessionId: deliveryTask?.sessionId ?? null,
-    deliverySessionStatus: deliveryTask?.sessionStatus ?? null,
-  };
+  const bundle: TopicDetailBundle = { topicId, topic: topicCard, tasks: taskRows };
 
   if ((topic.phase === 'Open' || topic.phase === 'Draft') && topic.prNumber && deps.prCache && repo) {
     try {
@@ -436,12 +433,36 @@ export class WsHub {
           if (!task) return this.send(ws, { type: 'server.topic.error', payload: { message: 'No task for that session.', ctx: 'save' } });
           const topic = td.topics.getById(task.topicId);
           if (!topic) return this.send(ws, { type: 'server.topic.error', payload: { message: 'No topic for that task.', ctx: 'save' } });
-          const h = this.manager.get(sessionId);
-          if (!h) return this.send(ws, { type: 'server.topic.error', payload: { message: 'Session is not running. Resume it first.', ctx: 'save' } });
-          if (h.state.status === 'running' || h.state.status === 'starting') {
-            return this.send(ws, { type: 'server.topic.error', payload: { message: 'Claude is busy — wait until idle and try again.', ctx: 'save' } });
-          }
-          h.send(savePrompt({ topicTitle: topic.title, taskLabel: task.label, ticketKey: topic.ticketKey }));
+          const worktreePath = task.worktreePath;
+          if (!worktreePath) return this.send(ws, { type: 'server.topic.error', payload: { message: 'Task has no worktree to save in.', ctx: 'save' } });
+          (async () => {
+            if (!(await gitOps.isDirty(worktreePath))) {
+              throw new Error('Nothing to save — no uncommitted changes.');
+            }
+            await gitOps.stageAll(worktreePath);
+            try {
+              const diff = await gitOps.stagedDiff(worktreePath);
+              const log = await gitOps.recentLog(worktreePath);
+              const message = await generateCommitMessage({
+                cwd: worktreePath,
+                branch: task.childBranch ?? '',
+                topicTitle: topic.title,
+                taskLabel: task.label,
+                ticketKey: topic.ticketKey,
+                stagedDiff: diff,
+                recentLog: log,
+              });
+              if (!message) throw new Error('Claude returned an empty commit message.');
+              await gitOps.commit(worktreePath, message);
+            } catch (e) {
+              await gitOps.resetStaged(worktreePath);
+              throw e;
+            }
+            this.broadcast(buildTopicState(td));
+            this.broadcastTopicDetail(task.topicId, await buildTopicDetail(task.topicId, td));
+          })().catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'save' } });
+          });
           break;
         }
         case 'client.task.discardChanges': {
@@ -485,25 +506,50 @@ export class WsHub {
           const task = td.tasks.getBySession(sessionId);
           if (!task) return this.send(ws, { type: 'server.topic.error', payload: { message: 'No task for that session.', ctx: 'merge' } });
           const topic = td.topics.getById(task.topicId);
-          if (!topic) return this.send(ws, { type: 'server.topic.error', payload: { message: 'No topic for that task.', ctx: 'merge' } });
+          if (!topic || !topic.topicBranch) return this.send(ws, { type: 'server.topic.error', payload: { message: 'Topic has no branch to merge into.', ctx: 'merge' } });
           const repo = td.repos.getById(topic.repoId);
           if (!repo) return this.send(ws, { type: 'server.topic.error', payload: { message: 'No repo for that topic.', ctx: 'merge' } });
-          const h = this.manager.get(sessionId);
-          if (!h) return this.send(ws, { type: 'server.topic.error', payload: { message: 'Session is not running. Resume it first.', ctx: 'merge' } });
-          if (h.state.status === 'running' || h.state.status === 'starting') {
-            return this.send(ws, { type: 'server.topic.error', payload: { message: 'Claude is busy — wait until idle and try again.', ctx: 'merge' } });
-          }
-          if (!topic.topicBranch || !task.childBranch) {
-            return this.send(ws, { type: 'server.topic.error', payload: { message: 'Task or topic is missing branch info.', ctx: 'merge' } });
-          }
-          h.send(mergePrompt({
-            topicBranch: topic.topicBranch,
-            taskBranch: task.childBranch,
-            repoPath: repo.path,
-            topicTitle: topic.title,
-            taskLabel: task.label,
-            ticketKey: topic.ticketKey,
-          }));
+          const worktreePath = task.worktreePath;
+          const taskBranch = task.childBranch;
+          if (!worktreePath || !taskBranch) return this.send(ws, { type: 'server.topic.error', payload: { message: 'Task missing worktree or branch.', ctx: 'merge' } });
+          const topicBranch = topic.topicBranch;
+          (async () => {
+            if (await gitOps.isDirty(worktreePath)) {
+              throw new Error('Uncommitted changes in the task worktree — Save or Discard changes first.');
+            }
+            const commits = await gitOps.commitListBetween(repo.path, topicBranch, taskBranch);
+            const diff = await gitOps.combinedDiff(repo.path, topicBranch, taskBranch);
+            const message = await generateMergeCommitMessage({
+              cwd: repo.path,
+              topicBranch,
+              taskBranch,
+              topicTitle: topic.title,
+              taskLabel: task.label,
+              ticketKey: topic.ticketKey,
+              commitList: commits,
+              combinedDiff: diff,
+            });
+            if (!message) throw new Error('Claude returned an empty merge commit message.');
+            await gitOps.squashMergeToTopic({
+              repoPath: repo.path,
+              topicBranch,
+              taskBranch,
+              message,
+              tmpWorktreeRoot: pathJoin(homedir(), '.claudex', 'worktrees'),
+            });
+            // DB bookkeeping (mirrors what the old acceptAttempt did).
+            td.tasks.markAccepted(sessionId);
+            td.topics.setPhase(topic.id, topic.phase === 'Open' ? 'Open' : 'Draft', { acceptedAttemptId: sessionId });
+            for (const t of td.tasks.listByTopic(topic.id)) {
+              if (t.type === 'attempt' && t.sessionId !== sessionId && !t.acceptedAt && !t.discardedAt) {
+                td.tasks.markDiscarded(t.sessionId);
+              }
+            }
+            this.broadcast(buildTopicState(td));
+            this.broadcastTopicDetail(task.topicId, await buildTopicDetail(task.topicId, td));
+          })().catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'merge' } });
+          });
           break;
         }
         case 'client.topic.push': {
@@ -514,30 +560,9 @@ export class WsHub {
             const topic = td.topics.getById(topicId);
             if (!topic || !topic.topicBranch) throw new Error('No branch to push.');
             const repo = td.repos.getById(topic.repoId)!;
-
-            const deliverable = await td.topicManager.computeDeliverable(topicId);
-            if (!deliverable.ok) throw new Error(`Topic not ready to push: ${deliverable.reasons.join(' ')}`);
-
-            const { sessionId, spawned } = await td.topicManager.ensureDeliverySession(topicId);
+            await gitOps.pushBranch({ repoPath: repo.path, remote: repo.forkRemote, branch: topic.topicBranch });
             this.broadcast(buildTopicState(td));
-            const detail = await buildTopicDetail(topicId, td);
-            this.broadcastTopicDetail(topicId, detail);
-
-            // Give a freshly-spawned stream-json subprocess a moment to hit idle
-            // (see CLAUDE.md §5 — it stays silent until stdin).
-            if (spawned) await new Promise((r) => setTimeout(r, 250));
-
-            const h = this.manager.get(sessionId);
-            if (!h) throw new Error('Delivery session vanished before prompt could be sent.');
-            if (h.state.status === 'running' || h.state.status === 'starting') {
-              throw new Error('Delivery session is busy — wait until idle and try again.');
-            }
-            h.send(pushPrompt({
-              topicBranch: topic.topicBranch,
-              topicTitle: topic.title,
-              ticketKey: topic.ticketKey,
-              forkRemote: repo.forkRemote,
-            }));
+            this.broadcastTopicDetail(topicId, await buildTopicDetail(topicId, td));
           })().catch((e: Error) => {
             this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'push' } });
           });
@@ -554,35 +579,39 @@ export class WsHub {
             if (topic.phase !== 'Draft') throw new Error(`cannot create PR in phase ${topic.phase}`);
             const repo = td.repos.getById(topic.repoId)!;
 
-            const { sessionId, spawned } = await td.topicManager.ensureDeliverySession(topicId);
-            this.broadcast(buildTopicState(td));
-            const detail = await buildTopicDetail(topicId, td);
-            this.broadcastTopicDetail(topicId, detail);
+            // Always push first so the head branch exists on the remote.
+            await gitOps.pushBranch({ repoPath: repo.path, remote: repo.forkRemote, branch: topic.topicBranch });
 
-            // Fresh stream-json subprocesses stay silent until stdin (CLAUDE.md §5),
-            // so give Claude a moment to reach idle before sending the prompt.
-            if (spawned) await new Promise((r) => setTimeout(r, 250));
-
-            const h = this.manager.get(sessionId);
-            if (!h) throw new Error('Delivery session vanished before prompt could be sent.');
-            if (h.state.status === 'running' || h.state.status === 'starting') {
-              throw new Error('Delivery session is busy — wait until idle and try again.');
-            }
-            h.send(openPrPrompt({
+            // Pre-bake context for the text generator — commit list, combined
+            // diff vs base, optional PR template.
+            const commits = await gitOps.commitListBetween(repo.path, repo.defaultBranch, topic.topicBranch);
+            const diff = await gitOps.combinedDiff(repo.path, repo.defaultBranch, topic.topicBranch);
+            const template = gitOps.readPrTemplate(repo.path);
+            const { title: genTitle, body: genBody } = await generatePrDescription({
+              cwd: repo.path,
               topicBranch: topic.topicBranch,
+              defaultBranch: repo.defaultBranch,
               topicTitle: topic.title,
               ticketKey: topic.ticketKey,
-              forkRemote: repo.forkRemote,
-              defaultBranch: repo.defaultBranch,
               suggestedTitle: title,
               suggestedBody: body,
-            }));
+              commitList: commits,
+              combinedDiff: diff,
+              prTemplate: template,
+            });
 
-            // Fire-and-forget: watch gh for the new PR so topic.prNumber gets set.
+            const pr = await gitOps.createPullRequest({
+              repoPath: repo.path, base: repo.defaultBranch, head: topic.topicBranch,
+              title: genTitle, body: genBody,
+            });
+
+            td.topics.setPhase(topicId, 'Open', { prNumber: pr.number });
+            this.broadcast(buildTopicState(td));
+            this.broadcastTopicDetail(topicId, await buildTopicDetail(topicId, td));
+
+            // Arm CI watching (best-effort — don't fail the whole op if it errors).
             if (td.prLifecycle) {
-              void td.prLifecycle.pollForPrNumber(topicId).catch((e) =>
-                console.error('[pollForPrNumber] error:', e),
-              );
+              td.prLifecycle.watchCi(topicId, true).catch((e) => console.error('[ci-watch] arm error', e));
             }
           })().catch((e: Error) => {
             this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'createPR' } });

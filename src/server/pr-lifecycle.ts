@@ -68,43 +68,12 @@ export class PrLifecycle {
   }
 
   /**
-   * Poll the VCS for a PR on this topic's branch until one appears or the
-   * deadline is reached. Used after a delivery session is asked to open the
-   * PR via prompt — Claude does the `gh pr create`, but the server needs to
-   * learn the new number to populate topic.prNumber and start CI watching.
-   *
-   * Idempotent: cheap `gh pr list` calls, stops early on success. Caller
-   * shouldn't await — fire-and-forget from the request handler.
+   * Legacy auto-PR path, still used by quick-fix-auto on session success.
+   * The user-facing Create PR button uses src/server/ops/git-ops +
+   * ops/text-gen now; this helper should be migrated too but is left as-is
+   * for now (hits the same `_TODO_` template body problem — acceptable for
+   * quick-fix because a follow-up human review is expected).
    */
-  async pollForPrNumber(topicId: string, opts: { deadlineMs?: number; intervalMs?: number } = {}): Promise<void> {
-    const deadline = Date.now() + (opts.deadlineMs ?? 180_000);
-    const interval = opts.intervalMs ?? 10_000;
-    const topic = this.deps.topics.getById(topicId);
-    if (!topic || !topic.topicBranch) return;
-    if (topic.prNumber) return; // already captured
-    const repo = this.deps.repos.getById(topic.repoId);
-    if (!repo) return;
-    const adapter = this.deps.adapter(repo.id);
-
-    while (Date.now() < deadline) {
-      try {
-        const n = await adapter.findPrByHead(repo.path, topic.topicBranch);
-        if (n) {
-          const fresh = this.deps.topics.getById(topicId);
-          if (!fresh || fresh.prNumber) return; // someone else won
-          this.deps.topics.setPhase(topicId, 'Open', { prNumber: n });
-          this.deps.onTopicChanged?.(topicId);
-          await this.watchCi(topicId, true).catch((e) => console.error('[ci-watch] arm error', e));
-          return;
-        }
-      } catch (e) {
-        console.error('[pollForPrNumber] transient error:', (e as Error).message);
-      }
-      await new Promise((r) => setTimeout(r, interval));
-    }
-    console.warn(`[pollForPrNumber] gave up waiting for PR on ${topic.topicBranch}`);
-  }
-
   async createPR(topicId: string, args: { title?: string; body?: string }): Promise<number> {
     const topic = this.deps.topics.getById(topicId);
     if (!topic) throw new Error('topic not found');

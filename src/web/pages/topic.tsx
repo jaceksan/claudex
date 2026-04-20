@@ -39,7 +39,7 @@ export default function TopicPage({ id }: { id: string }) {
     );
   }
 
-  const { topic, tasks, pr, threads, checks, required, deliverable, deliverySessionStatus } = detail;
+  const { topic, tasks, pr, threads, checks, required } = detail;
 
   function handleSaveTask(sessionId: string) {
     send({ type: 'client.task.save', payload: { sessionId } });
@@ -145,8 +145,6 @@ export default function TopicPage({ id }: { id: string }) {
         onAddressFeedback={handleAddressFeedback}
         onAddAttempt={handleAddAttempt}
         onPush={handlePushTopic}
-        deliverable={deliverable}
-        deliverySessionStatus={deliverySessionStatus}
         creatingPR={creatingPR}
       />
       {showAddAttempt && (
