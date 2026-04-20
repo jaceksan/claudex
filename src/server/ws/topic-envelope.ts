@@ -57,6 +57,8 @@ export interface SiblingRow {
 export interface TopicCard {
   id: string;
   repoId: string;
+  /** Short repo name (last path segment) — used to label cards on the dashboard. */
+  repoName: string;
   phase: string;
   template: string;
   ticketKey: string | null;

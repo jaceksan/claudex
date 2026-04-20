@@ -44,7 +44,7 @@ export default function App() {
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-4 border-b border-zinc-800 px-4 py-2">
         <Link href="/" className="font-semibold text-lg hover:text-blue-400">claudex</Link>
-        <span className="text-xs text-zinc-500">multi-session dashboard</span>
+        <span className="text-xs text-zinc-500">topics &amp; tasks for Claude Code</span>
         <span className="ml-auto flex items-center gap-2 text-xs">
           <NotificationToggle />
           <span

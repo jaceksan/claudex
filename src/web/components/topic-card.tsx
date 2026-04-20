@@ -14,7 +14,17 @@ export function TopicCard({ topic, onOpen, onDelete }: { topic: T; onOpen: () =>
       </button>
       <button onClick={onOpen} className="flex flex-col text-left">
         <div className="flex items-center justify-between pr-6">
-          <div className="text-xs text-zinc-500">{topic.ticketKey ?? 'free-form'}</div>
+          <div className="flex min-w-0 items-center gap-2 text-xs text-zinc-500">
+            <span className="truncate font-mono text-zinc-400" title={`Repository: ${topic.repoName}`}>
+              {topic.repoName}
+            </span>
+            {topic.ticketKey && (
+              <>
+                <span className="text-zinc-700">·</span>
+                <span className="font-mono">{topic.ticketKey}</span>
+              </>
+            )}
+          </div>
           <span className={`rounded-full px-2 py-0.5 text-xs ${stagePillClass(topic.phase)}`}>{topic.phase}</span>
         </div>
         <div className="mt-1 text-sm font-medium text-zinc-100">{topic.title}</div>

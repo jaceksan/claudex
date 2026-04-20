@@ -62,6 +62,8 @@ Then open http://localhost:5173. Backend runs on `:7878`; Vite proxies `/api` an
 - **Conflict resolution with AI narrative review.** Sync with main; on conflicts spawn a rebase task that reports a short summary + explicit uncertainties, letting a non-tech user accept/reject without reading diffs.
 - **Flaky CI triage & auto-restart.** Distinguish infrastructure flakes from real failures; rerun flakies rather than "fixing" them.
 - **GitLab support.** `VcsAdapter` is interface-ready; `GitLabAdapter` over `glab` ships after the GitHub path lands.
+- **Group dashboard by repository.** Today topics are a flat grid. Once the app is used against many repos, either (a) a left-rail repository list (sorted by most-recent activity) that filters the grid, or (b) repo-grouped sections with collapsible headers. Decision deferred until users have enough topics to notice the flatness.
+- **Multi-repo topics.** A single topic that owns branches/PRs in two or more repos — e.g. backend + frontend change delivered together. Requires a topic→repos link table, a merged CI rollup, and a coordinated Create-PR flow. Out of scope for now but the data model already points at an `id` on every topic/task so extending it is additive.
 - **Slack notifications.** Reuse the OS-notification contract for absent operators and async reviewers.
 - **Permissions / multi-user non-tech access.** Current design is single-operator localhost. A safe auth model for invited non-tech collaborators is a follow-up investigation — the door is kept open in the data model and UI.
 - **Live Bash command progress.** Today each command's output arrives in one chunk when the tool returns. Waiting on Claude Code to surface streaming tool stdout; we'll wire it through as soon as it lands.

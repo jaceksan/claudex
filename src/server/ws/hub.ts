@@ -56,7 +56,9 @@ function buildTopicState(deps: TopicDeps): ServerEnvelope {
         ? (deps.rawDb.prepare('SELECT last_event_at FROM sessions WHERE id=?').get(lastTask.sessionId) as { last_event_at?: number } | undefined)?.last_event_at ?? topic.createdAt
         : topic.createdAt;
       topicCards.push({
-        id: topic.id, repoId: topic.repoId, phase: topic.phase,
+        id: topic.id, repoId: topic.repoId,
+        repoName: repo.path.split('/').filter(Boolean).pop() ?? repo.path,
+        phase: topic.phase,
         template: topic.template, ticketKey: topic.ticketKey,
         title: topic.title, topicBranch: topic.topicBranch,
         prNumber: topic.prNumber, taskSummary, lastEventAt,
@@ -78,7 +80,9 @@ export async function buildTopicDetail(topicId: string, deps: TopicDeps): Promis
     : topic.createdAt;
 
   const topicCard: TopicDetailBundle['topic'] = {
-    id: topic.id, repoId: topic.repoId, phase: topic.phase,
+    id: topic.id, repoId: topic.repoId,
+    repoName: repo.path.split('/').filter(Boolean).pop() ?? repo.path,
+    phase: topic.phase,
     template: topic.template, ticketKey: topic.ticketKey,
     title: topic.title, topicBranch: topic.topicBranch,
     prNumber: topic.prNumber, taskSummary, lastEventAt,
