@@ -182,6 +182,39 @@ export async function attemptRebaseOnto(args: {
   }
 }
 
+/** Is a rebase currently paused (conflicting or interactive) in this worktree? */
+export async function isRebaseInProgress(worktreePath: string): Promise<boolean> {
+  try {
+    const merge = (await git(['rev-parse', '--git-path', 'rebase-merge'], worktreePath)).trim();
+    const apply = (await git(['rev-parse', '--git-path', 'rebase-apply'], worktreePath)).trim();
+    return existsSync(merge) || existsSync(apply);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Fast-forward `branch` (in the main repo) to the current HEAD of `worktreePath`,
+ * then tear down the worktree + its backing branch. Used to finalise a rebase:
+ * Claude resolved conflicts inside the rebase worktree, user clicks
+ * "Accept rebase" — we point the topic branch at the replayed commits and clean
+ * up. Caller must have already checked `!isRebaseInProgress` and `!isDirty`.
+ */
+export async function fastForwardAndCleanupWorktree(args: {
+  repoPath: string;
+  worktreePath: string;
+  /** The real branch to advance. */
+  branch: string;
+  /** The scratch branch the worktree is on — deleted after ff. */
+  scratchBranch: string;
+}): Promise<{ sha: string }> {
+  const sha = (await git(['rev-parse', 'HEAD'], args.worktreePath)).trim();
+  await git(['update-ref', `refs/heads/${args.branch}`, sha], args.repoPath);
+  try { await git(['worktree', 'remove', '--force', args.worktreePath], args.repoPath); } catch { /* ignore */ }
+  try { await git(['branch', '-D', args.scratchBranch], args.repoPath); } catch { /* ignore */ }
+  return { sha };
+}
+
 export async function hasUnpushedCommits(repoPath: string, branch: string, canonicalRef: string): Promise<boolean> {
   try {
     const out = (await git(['rev-list', '--count', `${branch}@{u}..${branch}`], repoPath)).trim();

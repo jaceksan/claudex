@@ -662,6 +662,28 @@ export class WsHub {
               if (await gitOps.isDirty(worktreePath)) {
                 throw new Error('Uncommitted changes in the task worktree — Save or Discard changes first.');
               }
+              if (task.type === 'rebase') {
+                // Different flow: the rebase worktree is already on the replayed
+                // topic history. Fast-forward the real topic branch to its HEAD
+                // and tear the worktree down. No squash — we want the rebased
+                // commit chain preserved.
+                if (await gitOps.isRebaseInProgress(worktreePath)) {
+                  throw new Error('Rebase is still in progress — finish with `git rebase --continue` in the rebase session first.');
+                }
+                const { sha } = await gitOps.fastForwardAndCleanupWorktree({
+                  repoPath: repo.path,
+                  worktreePath,
+                  branch: topicBranch,
+                  scratchBranch: taskBranch,
+                });
+                td.tasks.markAccepted(sessionId);
+                this.broadcast(buildTopicState(td));
+                this.broadcastTopicDetail(task.topicId, await buildTopicDetail(task.topicId, td));
+                this.notifySession(sessionId,
+                  `Rebase accepted: ${topicBranch} fast-forwarded to ${sha.slice(0, 7)}. The rebase worktree has been removed. No action required — this is an automated note.`,
+                );
+                return;
+              }
               const commits = await gitOps.commitListBetween(repo.path, topicBranch, taskBranch);
               const diff = await gitOps.combinedDiff(repo.path, topicBranch, taskBranch);
               const message = await generateMergeCommitMessage({

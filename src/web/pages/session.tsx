@@ -335,7 +335,7 @@ export default function SessionPage({ id }: { id: string }) {
                 className="rounded bg-emerald-700 px-2 py-0.5 text-[11px] text-white hover:bg-emerald-600"
                 title={`Merge ${ahead} commit${ahead === 1 ? '' : 's'} into the topic branch`}
               >
-                {taskCtx.task.type === 'attempt' ? 'Merge to topic' : 'Apply fix'}
+                {taskCtx.task.type === 'attempt' ? 'Merge to topic' : taskCtx.task.type === 'rebase' ? 'Accept rebase' : 'Apply fix'}
               </button>
             )}
             {!inFlight && isDirty && (

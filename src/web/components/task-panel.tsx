@@ -90,7 +90,7 @@ export function TaskPanel({
                   className="rounded bg-emerald-700 px-2 py-0.5 text-xs text-white hover:bg-emerald-600"
                   title="Merge task commits into the topic branch"
                 >
-                  {task.type === 'attempt' ? 'Merge to topic' : 'Apply fix'}
+                  {task.type === 'attempt' ? 'Merge to topic' : task.type === 'rebase' ? 'Accept rebase' : 'Apply fix'}
                 </button>
                 <button
                   type="button"
