@@ -350,9 +350,24 @@ export class PrLifecycle {
     const check = bundle.checks.find((c) => c.name === checkName);
     if (!check) throw new Error(`check ${checkName} not found`);
 
-    const logTail = await this.deps
-      .git(['run', 'view', String(check.runId), '--log-failed'], repo.path)
-      .catch(() => '');
+    // Fetch the failing job log via `gh run view --log-failed`. The old code
+    // routed this through the git helper, which of course can't run gh —
+    // every logTail came out empty and Claude got a useless fix prompt.
+    let logTail = '';
+    if (check.runId) {
+      try {
+        const { execFile } = await import('node:child_process');
+        const { promisify } = await import('node:util');
+        const exec = promisify(execFile);
+        const { stdout } = await exec('gh',
+          ['run', 'view', String(check.runId), '--log-failed'],
+          { cwd: repo.path, maxBuffer: 16 * 1024 * 1024, timeout: 30_000 },
+        );
+        logTail = stdout.length > 20_000 ? stdout.slice(-20_000) : stdout;
+      } catch (e) {
+        console.warn(`[fixCheck] could not fetch log for run ${check.runId}:`, (e as Error).message);
+      }
+    }
 
     const prompt = renderActionPrompt({
       action: 'ci-watch',

@@ -363,8 +363,10 @@ describe('PrLifecycle fix methods', () => {
       const call = addFixTask.mock.calls[0];
       expect(call[1].type).toBe('fix-ci');
       expect(call[1].parentTrigger).toEqual({ checkNames: ['e2e-tests'] });
-      // log tail was attempted
-      expect(gitCalls.some((g) => g.args.includes('--log-failed'))).toBe(true);
+      // Log tail is now fetched via a direct `gh run view --log-failed` shell
+      // call (see fixCheck), not via the git helper — so there's no mockable
+      // side effect to assert here without shelling out. We settle for:
+      // "task got spawned with the right shape" above.
     });
 
     it('throws when check is not found', async () => {
