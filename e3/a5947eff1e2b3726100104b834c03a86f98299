@@ -1,0 +1,23 @@
+src/web/components/topic-grid.tsx
+  7a240c56656ec247 1,5-10,12,16-35,37-38,42-76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "e3a5947eff1e2b3726100104b834c03a86f98299",
+  "prompts": {
+    "7a240c56656ec247": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28cd815a-90e4-4f16-b2c1-5aacb321a562",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 65,
+      "total_deletions": 13,
+      "accepted_lines": 76,
+      "overriden_lines": 0
+    }
+  }
+}
