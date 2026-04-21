@@ -78,7 +78,17 @@ const topicManager = new TopicManager({
 });
 
 const ghAdapter = new GitHubAdapter();
-const prCache = new PrCache(ghAdapter);
+const { GitLabAdapter } = await import('./vcs/gitlab.js');
+const glAdapter = new GitLabAdapter();
+function adapterFor(repoId: string) {
+  const r = repos.getById(repoId);
+  return r?.vcsKind === 'gitlab' ? glAdapter : ghAdapter;
+}
+// Pass a resolver so prCache fetches use the right CLI per repo.
+const prCache = new PrCache((cwd: string) => {
+  const r = repos.getByPath(cwd);
+  return r?.vcsKind === 'gitlab' ? glAdapter : ghAdapter;
+});
 const ciHistory = new CiHistoryStore(db.underlying());
 // Forward-referenced because WsHub is constructed after PrLifecycle below.
 // PrLifecycle calls hub.refreshTopicDetail after PR create and each CI poll
@@ -86,7 +96,7 @@ const ciHistory = new CiHistoryStore(db.underlying());
 const prLifecycle = new PrLifecycle({
   repos,
   topics,
-  adapter: () => ghAdapter,
+  adapter: (repoId) => adapterFor(repoId),
   prCache,
   git: async (args, cwd) => execFileP('git', args, { cwd: cwd ?? process.cwd() }).then((r) => r.stdout),
   topicManager,
@@ -157,11 +167,24 @@ app.post('/api/repo/register', async (req, reply) => {
   const existing = repos.getByPath(root);
   if (existing) return reply.send(existing);
   try {
-    const adapter = new GitHubAdapter();
+    // Pick the adapter by sniffing the `origin` remote URL. GitLab repos get
+    // the glab-backed adapter (preview — see vcs/gitlab.ts). Everything else
+    // falls through to GitHub.
+    const { execFile: exF } = await import('node:child_process');
+    const { promisify: pm } = await import('node:util');
+    const exF2 = pm(exF);
+    let originUrl = '';
+    try {
+      const { stdout } = await exF2('git', ['config', '--get', 'remote.origin.url'], { cwd: root, timeout: 5_000 });
+      originUrl = stdout.trim();
+    } catch { /* best-effort */ }
+    const isGitLab = /gitlab\./i.test(originUrl);
+    const { GitLabAdapter } = await import('./vcs/gitlab.js');
+    const adapter = isGitLab ? new GitLabAdapter() : new GitHubAdapter();
     const summary = await adapter.getRepo(root);
     const isFork = !!summary.parentOwner;
     const repo = repos.register({
-      path: root, vcsKind: 'github',
+      path: root, vcsKind: isGitLab ? 'gitlab' : 'github',
       canonicalRemote: isFork ? 'upstream' : 'origin',
       forkRemote: 'origin',
       defaultBranch: summary.defaultBranch,
