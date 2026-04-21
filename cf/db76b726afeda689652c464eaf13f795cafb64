@@ -1,0 +1,29 @@
+src/server/vcs/gitlab.ts
+  7a240c56656ec247 1-140
+src/server/pr-cache.ts
+  7a240c56656ec247 11-17,21-25,32-33,35-37
+README.md
+  7a240c56656ec247 24-26
+src/server/index.ts
+  7a240c56656ec247 81-91,99,170-183,187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "cfdb76b726afeda689652c464eaf13f795cafb64",
+  "prompts": {
+    "7a240c56656ec247": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28cd815a-90e4-4f16-b2c1-5aacb321a562",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 189,
+      "total_deletions": 11,
+      "accepted_lines": 354,
+      "overriden_lines": 0
+    }
+  }
+}
