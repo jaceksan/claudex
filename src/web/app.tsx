@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Route, Link } from 'wouter';
 import DashboardPage from './pages/dashboard';
+import InboxPage from './pages/inbox';
 import SessionPage from './pages/session';
 import TopicPage from './pages/topic';
 import { useConnection, useSessionList } from './hooks/use-ws';
@@ -45,6 +46,7 @@ export default function App() {
       <header className="flex items-center gap-4 border-b border-zinc-800 px-4 py-2">
         <Link href="/" className="font-semibold text-lg hover:text-blue-400">claudex</Link>
         <span className="text-xs text-zinc-500">topics &amp; tasks for Claude Code</span>
+        <Link href="/inbox" className="text-xs text-zinc-400 hover:text-blue-300">Inbox</Link>
         <span className="ml-auto flex items-center gap-2 text-xs">
           <NotificationToggle />
           <span
@@ -62,6 +64,7 @@ export default function App() {
       )}
       <main className="flex-1 overflow-hidden">
         <Route path="/" component={DashboardPage} />
+        <Route path="/inbox" component={InboxPage} />
         <Route path="/session/:id">{(params) => <SessionPage id={params.id} />}</Route>
         <Route path="/topic/:id">{(params) => <TopicPage id={params.id} />}</Route>
       </main>

@@ -30,6 +30,7 @@ export type TopicClientMessage =
   | { type: 'client.repo.suppressCheck'; payload: { repoId: string; checkName: string; reason?: string } }
   | { type: 'client.repo.unsuppressCheck'; payload: { repoId: string; checkName: string } }
   | { type: 'client.pr.rerunCheck'; payload: { topicId: string; checkName: string } }
+  | { type: 'client.inbox.list'; payload: Record<string, never> }
   | { type: 'client.thread.reply'; payload: { topicId: string; threadId: string; body: string } }
   | { type: 'client.session.siblings'; payload: { sessionId: string } };
 
@@ -44,7 +45,22 @@ export type TopicServerMessage =
       localBranchExists: boolean;
       duplicateTopic: { id: string; title: string } | null;
     } }
-  | { type: 'server.session.siblings'; payload: { sessionId: string; topicId: string | null; siblings: SiblingRow[] } };
+  | { type: 'server.session.siblings'; payload: { sessionId: string; topicId: string | null; siblings: SiblingRow[] } }
+  | { type: 'server.inbox.state'; payload: { items: InboxItem[] } };
+
+export interface InboxItem {
+  topicId: string;
+  topicTitle: string;
+  repoName: string;
+  /** One of the things that need the user's attention. */
+  kind: 'failing-ci' | 'unresolved-comments' | 'behind-main' | 'rebase-in-progress';
+  /** Short human-readable line shown in the inbox row. */
+  summary: string;
+  /** Higher = more urgent; inbox sorts desc. */
+  priority: number;
+  /** Optional deep-link hint, e.g. a check name or session id the UI can navigate to. */
+  hint?: string;
+}
 
 export interface SiblingRow {
   sessionId: string;

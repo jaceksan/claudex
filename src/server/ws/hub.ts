@@ -141,6 +141,92 @@ export async function buildTopicDetail(topicId: string, deps: TopicDeps): Promis
   return { type: 'server.topic.detail', payload: bundle };
 }
 
+/**
+ * Build the dashboard-wide Inbox: a flat list of "something needs your
+ * attention" items across every active topic. Cheap enough to compute on
+ * demand (O(topics) with bounded git + prCache lookups) so we re-run it on
+ * each client.inbox.list rather than maintaining a subscription.
+ */
+export async function computeInbox(deps: TopicDeps): Promise<import('./topic-envelope.js').InboxItem[]> {
+  const items: import('./topic-envelope.js').InboxItem[] = [];
+  const repoList = deps.repos.list();
+  const repoById = new Map(repoList.map((r) => [r.id, r]));
+
+  for (const repo of repoList) {
+    const topics = deps.topics.listByRepo(repo.id);
+    const nonVoting = deps.repos.listNonVoting(repo.id);
+    const flaky = deps.ciHistory ? deps.ciHistory.flakyChecksForRepo(repo.id) : [];
+    for (const topic of topics) {
+      if (topic.phase === 'Merged' || topic.phase === 'Closed') continue;
+      const repoName = repo.path.split('/').filter(Boolean).pop() ?? repo.path;
+
+      // Rebase task already running? Surface it.
+      const rebasing = deps.tasks.listByTopic(topic.id).find((t) => t.type === 'rebase' && !t.acceptedAt && !t.discardedAt);
+      if (rebasing) {
+        items.push({
+          topicId: topic.id, topicTitle: topic.title, repoName,
+          kind: 'rebase-in-progress',
+          summary: 'Rebase in progress — open the rebase session to resolve conflicts.',
+          priority: 50,
+          hint: rebasing.sessionId,
+        });
+      }
+
+      // Behind main?
+      if (topic.topicBranch) {
+        try {
+          const { aheadCount } = await import('../ops/git-ops.js');
+          const behind = await aheadCount(repo.path, topic.topicBranch, `${repo.canonicalRemote}/${repo.defaultBranch}`).catch(() => 0);
+          if (behind > 0) {
+            items.push({
+              topicId: topic.id, topicTitle: topic.title, repoName,
+              kind: 'behind-main',
+              summary: `${behind} commit${behind === 1 ? '' : 's'} behind ${repo.defaultBranch} — click Sync to rebase.`,
+              priority: 20,
+            });
+          }
+        } catch { /* ignore */ }
+      }
+
+      // Open PR signals: failing required CI (minus suppressed) + unresolved comments.
+      if (topic.phase === 'Open' && topic.prNumber && deps.prCache) {
+        try {
+          const bundle = await deps.prCache.get(repo.path, topic.prNumber, repo.defaultBranch);
+          const failing = bundle.checks.filter(
+            (c) => c.conclusion === 'failure' && !nonVoting.includes(c.name),
+          );
+          if (failing.length > 0) {
+            const allFlaky = failing.every((c) => flaky.includes(c.name));
+            items.push({
+              topicId: topic.id, topicTitle: topic.title, repoName,
+              kind: 'failing-ci',
+              summary: allFlaky
+                ? `${failing.length} failing CI check${failing.length === 1 ? '' : 's'} — all look flaky, try Retry before Fix.`
+                : `${failing.length} failing CI check${failing.length === 1 ? '' : 's'} — ${failing.slice(0, 2).map((c) => c.name).join(', ')}${failing.length > 2 ? '…' : ''}`,
+              priority: allFlaky ? 30 : 80,
+            });
+          }
+          const unresolved = bundle.threads.filter(
+            (t) => !t.isResolved && t.comments.some((c) => !c.isBot),
+          );
+          if (unresolved.length > 0) {
+            items.push({
+              topicId: topic.id, topicTitle: topic.title, repoName,
+              kind: 'unresolved-comments',
+              summary: `${unresolved.length} unresolved review comment${unresolved.length === 1 ? '' : 's'}.`,
+              priority: 60,
+            });
+          }
+        } catch { /* prCache miss — skip */ }
+      }
+    }
+  }
+  items.sort((a, b) => b.priority - a.priority || a.topicTitle.localeCompare(b.topicTitle));
+  // Silence unused-var warning for repoById — reserved for future hint lookups.
+  void repoById;
+  return items;
+}
+
 export class WsHub {
   private readonly clients = new Set<WebSocket>();
   private readonly subs = new Map<WebSocket, Set<string>>(); // ws -> sessionIds
@@ -836,6 +922,17 @@ export class WsHub {
               message: e.message,
               ctx: env.type === 'client.repo.suppressCheck' ? 'suppress' : 'unsuppress',
             } });
+          });
+          break;
+        }
+        case 'client.inbox.list': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          (async () => {
+            const items = await computeInbox(td);
+            this.send(ws, { type: 'server.inbox.state', payload: { items } });
+          })().catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'inbox' } });
           });
           break;
         }
