@@ -97,12 +97,20 @@ const prLifecycle = new PrLifecycle({
 const hub: WsHub = new WsHub(manager, notifications, db, transcripts, { topicManager, repos, topics, tasks, rawDb: db.underlying(), prLifecycle, prCache, ciHistory, ghAdapter });
 
 // Auto-accept + auto-PR for quick-fix topics on session success.
+// Routed through ops/topic-ops so the new deterministic git + one-shot
+// Claude-text flow runs here too — no more _TODO_ template body in
+// quick-fix PRs.
+const { mergeAttemptToTopic, createPrForTopic } = await import('./ops/topic-ops.js');
+const topicOpsDeps = {
+  tasks, topics, repos, prLifecycle,
+  onTopicChanged: (topicId: string) => { void hub?.refreshTopicDetail(topicId); },
+};
 manager.on('ended', (h) => {
   onSessionEnded(h.id, h.state.status, {
     tasks,
     topics,
-    acceptAttempt: (sid) => topicManager.acceptAttempt(sid),
-    createPR: (topicId, args) => prLifecycle.createPR(topicId, args),
+    acceptAttempt: async (sid) => { await mergeAttemptToTopic(sid, topicOpsDeps); },
+    createPR: async (topicId) => { await createPrForTopic(topicId, topicOpsDeps); },
   }).catch((e) => console.error('[quick-fix-auto] unexpected error', e));
 });
 
