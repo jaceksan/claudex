@@ -76,6 +76,9 @@ export default function TopicPage({ id }: { id: string }) {
   function handleRetryCheck(checkName: string) {
     send({ type: 'client.pr.rerunCheck', payload: { topicId: id, checkName } });
   }
+  function handleSyncTopic() {
+    send({ type: 'client.topic.sync', payload: { topicId: id } });
+  }
   function handleAddressFeedback(includeCi: boolean, includeComments: boolean) {
     send({ type: 'client.pr.addressFeedback', payload: { topicId: id, includeCi, includeComments } });
   }
@@ -166,6 +169,7 @@ export default function TopicPage({ id }: { id: string }) {
         onAddAttempt={handleAddAttempt}
         onPush={handlePushTopic}
         onClosePR={handleClosePR}
+        onSync={handleSyncTopic}
         creatingPR={creatingPR}
       />
       {showAddAttempt && (

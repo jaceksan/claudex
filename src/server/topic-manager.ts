@@ -6,7 +6,9 @@ import type { TopicStore, TopicTemplate } from './topic.js';
 import type { TaskStore } from './task.js';
 import { renderBranchTemplate } from './branch-template.js';
 import { slugify } from './slug.js';
-import { closePullRequest } from './ops/git-ops.js';
+import { closePullRequest, attemptRebaseOnto } from './ops/git-ops.js';
+import { homedir } from 'node:os';
+import { join as pathJoin } from 'node:path';
 
 export interface SpawnedSession { id: string; }
 export type Git = (args: string[], cwd?: string) => Promise<string>;
@@ -288,6 +290,87 @@ export class TopicManager {
         }
       } catch { /* best-effort — don't block detail rendering on git hiccups */ }
     }
+  }
+
+  /**
+   * Sync the topic branch with the canonical default branch. Tries to rebase
+   * cleanly; if clean, fast-forwards the topic branch and returns. On
+   * conflict, leaves the rebase-in-progress in a dedicated worktree and
+   * spawns a `rebase` task session seeded with the conflict file list so
+   * Claude can resolve the conflicts interactively. User then runs
+   * `git rebase --continue` inside the session until the rebase finishes.
+   */
+  async syncTopicWithMain(topicId: string): Promise<{
+    status: 'up-to-date' | 'fast-forwarded' | 'clean-rebase' | 'conflict';
+    resultSha?: string;
+    sessionId?: string;
+    conflictFiles?: string[];
+  }> {
+    const topic = this.d.topics.getById(topicId);
+    if (!topic) throw new Error(`topic ${topicId} not found`);
+    if (!topic.topicBranch) throw new Error('topic has no branch — exploration topics cannot be synced');
+    const repo = this.d.repos.getById(topic.repoId)!;
+
+    // Reject when a rebase task is already in flight; only one at a time.
+    const existing = this.d.tasks.listByTopic(topicId)
+      .find((t) => t.type === 'rebase' && !t.acceptedAt && !t.discardedAt);
+    if (existing) throw new Error('A rebase task is already in progress — resolve or discard it first.');
+
+    await this.d.git(['fetch', repo.canonicalRemote, repo.defaultBranch], repo.path);
+    const canonicalRef = `${repo.canonicalRemote}/${repo.defaultBranch}`;
+
+    const ghUser = await this.d.githubLogin().catch(() => 'claudex');
+    const repoBase = repo.path.split('/').pop() ?? 'repo';
+    const dirTail = renderBranchTemplate('{repo}__{ticket}__{slug}__claudex_rebase', {
+      repo: repoBase, ticket: topic.ticketKey ?? '', slug: topic.slug,
+    });
+    const dirName = `${ghUser}/${dirTail}`;
+
+    const result = await attemptRebaseOnto({
+      repoPath: repo.path,
+      branch: topic.topicBranch,
+      upstreamRef: canonicalRef,
+      worktreeRoot: pathJoin(homedir(), '.claudex', 'worktrees'),
+      dirName,
+    });
+
+    if (result.status !== 'conflict') {
+      return { status: result.status, resultSha: result.resultSha };
+    }
+
+    // Conflict path — spawn a rebase task on the paused worktree.
+    const presetUiId = randomUUID();
+    const label = `rebase: ${topic.title}`;
+    const files = result.conflictFiles ?? [];
+    const prompt = [
+      `The topic branch \`${topic.topicBranch}\` is being rebased onto \`${canonicalRef}\`.`,
+      `Git is paused mid-rebase with conflicts in these files:`,
+      files.map((f) => `  - ${f}`).join('\n'),
+      ``,
+      `Please resolve each conflict: read the markers, understand both sides, and write the correct merged code. After a file is clean, \`git add\` it. When every file is staged, run \`git rebase --continue\`. If more conflicts appear mid-sequence, repeat until the rebase finishes.`,
+      ``,
+      `Do NOT run \`git rebase --abort\` unless the user explicitly asks you to. Do NOT merge, push, or open PRs — that's handled via claudex buttons once the rebase finishes.`,
+    ].join('\n');
+
+    const session = await this.d.spawnSession({
+      cwd: result.worktreePath!,
+      label,
+      prompt,
+      effort: 'high',
+      permissionMode: 'acceptEdits',
+      presetUiId,
+      worktree: { path: result.worktreePath!, origin: repo.path, branch: result.rebaseBranch! },
+      appendSystemPrompt: orientationHint({
+        cwd: result.worktreePath!, branch: result.rebaseBranch!, base: canonicalRef,
+        topicTitle: topic.title, taskLabel: 'rebase',
+      }),
+    });
+    this.d.tasks.create({
+      sessionId: session.id, topicId, type: 'rebase', label,
+      childBranch: result.rebaseBranch, worktreePath: result.worktreePath,
+      parentTrigger: { conflictFiles: files },
+    });
+    return { status: 'conflict', sessionId: session.id, conflictFiles: files };
   }
 
   async addFixTask(topicId: string, args: {

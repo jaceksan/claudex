@@ -85,6 +85,9 @@ export async function buildTopicDetail(topicId: string, deps: TopicDeps): Promis
   const canPush = topic.topicBranch
     ? await gitOps.hasUnpushedCommits(repo.path, topic.topicBranch, `${repo.canonicalRemote}/${repo.defaultBranch}`)
     : false;
+  const behindCanonical = topic.topicBranch
+    ? await gitOps.aheadCount(repo.path, topic.topicBranch, `${repo.canonicalRemote}/${repo.defaultBranch}`).catch(() => 0)
+    : 0;
 
   const topicCard: TopicDetailBundle['topic'] = {
     id: topic.id, repoId: topic.repoId,
@@ -99,6 +102,7 @@ export async function buildTopicDetail(topicId: string, deps: TopicDeps): Promis
     repoPath: repo.path,
     repoDefaultBranch: repo.defaultBranch,
     canPush,
+    behindCanonical,
   };
 
   const taskRows: TaskRow[] = deps.tasks.listByTopic(topicId).map((t) => {
@@ -755,6 +759,32 @@ export class WsHub {
             this.broadcastTopicDetail(topicId, detail);
           }).catch((e: Error) => {
             this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'watch' } });
+          });
+          break;
+        }
+        case 'client.topic.sync': {
+          const td = this.topicDeps;
+          if (!td) return this.sendError(ws, 'topic support not initialised');
+          const { topicId } = env.payload;
+          (async () => {
+            const r = await td.topicManager.syncTopicWithMain(topicId);
+            this.broadcast(buildTopicState(td));
+            this.broadcastTopicDetail(topicId, await buildTopicDetail(topicId, td));
+            // If a rebase session was spawned, let the caller's UI know via a
+            // plain error-channel "info" message with a dedicated ctx so it can
+            // show a notice rather than a red banner. Soft-info via the error
+            // banner is the cheapest path right now.
+            if (r.status === 'up-to-date') {
+              this.send(ws, { type: 'server.topic.error', payload: { message: 'Topic is already up to date with main.', ctx: 'syncInfo' } });
+            } else if (r.status === 'conflict') {
+              const files = (r.conflictFiles ?? []).slice(0, 5).join(', ') + ((r.conflictFiles?.length ?? 0) > 5 ? '…' : '');
+              this.send(ws, { type: 'server.topic.error', payload: {
+                message: `Rebase hit conflicts in ${files}. A rebase task has been spawned — open it to resolve with Claude.`,
+                ctx: 'syncInfo',
+              } });
+            }
+          })().catch((e: Error) => {
+            this.send(ws, { type: 'server.topic.error', payload: { message: e.message, ctx: 'sync' } });
           });
           break;
         }

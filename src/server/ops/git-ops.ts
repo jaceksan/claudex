@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, join as pathJoin } from 'node:path';
 
 const exec = promisify(execFile);
 
@@ -107,6 +107,81 @@ export async function aheadCount(repoPath: string, base: string, head: string): 
  * no upstream is set (first push). Returns false on any git error — safer
  * to hide the Push button than to offer an action that will fail.
  */
+/**
+ * Rebase `branch` onto `upstreamRef` inside a disposable temp worktree.
+ * Returns `ok` if the rebase finished cleanly — the caller should then
+ * fast-forward the real branch to the rebased head (`resultSha`). On
+ * conflict, the worktree is left in-place (rebase-in-progress) so callers
+ * can hand it to a Claude session to resolve; the failing file list is
+ * returned for UI consumption.
+ */
+export interface RebaseAttemptResult {
+  status: 'up-to-date' | 'fast-forwarded' | 'clean-rebase' | 'conflict';
+  /** New head sha on the rebased branch if `clean-rebase` / `fast-forwarded`. */
+  resultSha?: string;
+  /** Path to the long-lived rebase worktree — only present on `conflict`. */
+  worktreePath?: string;
+  /** Rebase branch name created for this attempt — only present on `conflict`. */
+  rebaseBranch?: string;
+  /** Conflicting file paths — only present on `conflict`. */
+  conflictFiles?: string[];
+}
+
+export async function attemptRebaseOnto(args: {
+  repoPath: string;
+  branch: string;
+  upstreamRef: string;
+  /** Where to create the disposable / long-lived rebase worktree. */
+  worktreeRoot: string;
+  /** Name for the rebase branch. Defaults to `<branch>__claudex_rebase`. */
+  rebaseBranch?: string;
+  /** Directory name inside worktreeRoot for this rebase attempt. */
+  dirName?: string;
+}): Promise<RebaseAttemptResult> {
+  const behind = await aheadCount(args.repoPath, args.branch, args.upstreamRef);
+  if (behind === 0) return { status: 'up-to-date' };
+
+  const ahead = await aheadCount(args.repoPath, args.upstreamRef, args.branch);
+  const rebaseBranch = args.rebaseBranch ?? `${args.branch}__claudex_rebase`;
+
+  // Fast-forward only when topic has no divergent commits — no conflict
+  // possible, no need to bounce through a worktree.
+  if (ahead === 0) {
+    await git(['update-ref', `refs/heads/${args.branch}`, args.upstreamRef], args.repoPath);
+    const sha = (await git(['rev-parse', args.upstreamRef], args.repoPath)).trim();
+    return { status: 'fast-forwarded', resultSha: sha };
+  }
+
+  // Create a fresh rebase branch off the current topic tip (so we can reset
+  // topic to the rebased head once clean, or hand the worktree to Claude
+  // on conflict without touching topic).
+  try { await git(['branch', '-D', rebaseBranch], args.repoPath); } catch { /* first-time ok */ }
+  await git(['branch', rebaseBranch, args.branch], args.repoPath);
+
+  const dir = args.dirName ?? `.rebase-${Date.now().toString(36)}`;
+  const wtPath = pathJoin(args.worktreeRoot, dir);
+  await git(['worktree', 'add', wtPath, rebaseBranch], args.repoPath);
+
+  try {
+    await git(['rebase', args.upstreamRef], wtPath, LONG_GIT_TIMEOUT);
+    // Clean — ff the real branch to the rebased head, then tear down.
+    const sha = (await git(['rev-parse', 'HEAD'], wtPath)).trim();
+    await git(['update-ref', `refs/heads/${args.branch}`, sha], args.repoPath);
+    try { await git(['worktree', 'remove', '--force', wtPath], args.repoPath); } catch { /* ignore */ }
+    try { await git(['branch', '-D', rebaseBranch], args.repoPath); } catch { /* ignore */ }
+    return { status: 'clean-rebase', resultSha: sha };
+  } catch {
+    // Conflict. Git leaves rebase-in-progress inside wtPath. Report the
+    // conflicting paths and leave the worktree for a Claude session.
+    let files: string[] = [];
+    try {
+      const out = await git(['diff', '--name-only', '--diff-filter=U'], wtPath);
+      files = out.split('\n').map((s) => s.trim()).filter(Boolean);
+    } catch { /* best-effort */ }
+    return { status: 'conflict', worktreePath: wtPath, rebaseBranch, conflictFiles: files };
+  }
+}
+
 export async function hasUnpushedCommits(repoPath: string, branch: string, canonicalRef: string): Promise<boolean> {
   try {
     const out = (await git(['rev-list', '--count', `${branch}@{u}..${branch}`], repoPath)).trim();

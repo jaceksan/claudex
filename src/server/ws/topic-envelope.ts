@@ -15,6 +15,7 @@ export type TopicClientMessage =
   | { type: 'client.topic.subscribe'; payload: { topicId: string } }
   | { type: 'client.topic.unsubscribe'; payload: { topicId: string } }
   | { type: 'client.topic.push'; payload: { topicId: string } }
+  | { type: 'client.topic.sync'; payload: { topicId: string } }
   | { type: 'client.task.save'; payload: { sessionId: string; message?: string } }
   | { type: 'client.task.discardChanges'; payload: { sessionId: string } }
   | { type: 'client.task.discardHard'; payload: { sessionId: string } }
@@ -98,6 +99,8 @@ export interface TopicDetailBundle {
      * visibility so we don't offer the action when there's nothing to push.
      */
     canPush: boolean;
+    /** Commits on the canonical default branch not yet on the topic branch — drives the Sync button. */
+    behindCanonical: number;
   };
   tasks: TaskRow[];
   /** Check names the user has marked non-voting for this repo. */

@@ -82,6 +82,7 @@ export function ActionBar({
   onAddAttempt,
   onPush,
   onClosePR,
+  onSync,
   creatingPR = false,
 }: {
   topic: TopicMeta;
@@ -95,6 +96,7 @@ export function ActionBar({
   onAddAttempt: () => void;
   onPush: () => void;
   onClosePR: () => void;
+  onSync: () => void;
   creatingPR?: boolean;
 }) {
   const actions = visibleActions(topic, tasks, pr, threads, checks, required);
@@ -169,6 +171,18 @@ export function ActionBar({
           title={`Push ${topic.topicBranch} — topic branch has unpushed commits`}
         >
           Push
+        </button>
+      )}
+
+      {topic.phase !== 'Exploring' && topic.topicBranch && topic.behindCanonical > 0 && (
+        <button
+          type="button"
+          onClick={onSync}
+          className="rounded border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-blue-600 hover:text-blue-300"
+          title={`Topic branch is ${topic.behindCanonical} commit${topic.behindCanonical === 1 ? '' : 's'} behind ${topic.repoDefaultBranch}. Rebase on top.`}
+        >
+          Sync with {topic.repoDefaultBranch}
+          <span className="ml-1.5 rounded bg-blue-900/40 px-1 py-0 text-[10px] text-blue-200">{topic.behindCanonical}↓</span>
         </button>
       )}
 
