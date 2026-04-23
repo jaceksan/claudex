@@ -1,0 +1,44 @@
+src/server/vcs/github.ts
+  7a240c56656ec247 71-72
+  3e8472f51d9cfded 3,42-46,54,58-70
+tests/pr-lifecycle.test.ts
+  3e8472f51d9cfded 25
+tests/fixtures/gh-output/status-check-rollup-pending.json
+  3e8472f51d9cfded 1
+README.md
+  3e8472f51d9cfded 21
+tests/pr-cache.test.ts
+  3e8472f51d9cfded 18
+src/server/vcs/gitlab.ts
+  3e8472f51d9cfded 61-63
+tests/vcs-github.test.ts
+  3e8472f51d9cfded 49-66
+src/server/vcs/adapter.ts
+  3e8472f51d9cfded 9-17,30
+tests/topic-detail.test.ts
+  3e8472f51d9cfded 18
+src/web/components/ci-panel.tsx
+  3e8472f51d9cfded 2,26,37-41,66-69,71-78,91-95
+src/web/pages/topic.tsx
+  3e8472f51d9cfded 200
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.2",
+  "base_commit_sha": "1314e5eddb52ac73aeab140da66b13a4913e0b33",
+  "prompts": {
+    "3e8472f51d9cfded": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2648c4f4-01d0-4592-945e-725f94317eac",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 83,
+      "total_deletions": 6,
+      "accepted_lines": 91,
+      "overriden_lines": 0
+    }
+  }
+}
