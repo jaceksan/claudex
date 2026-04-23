@@ -1,0 +1,31 @@
+src/server/ws/hub.ts
+  3e8472f51d9cfded 19,702-707,739-741,743
+tests/merge-task-into-topic.test.ts
+  3e8472f51d9cfded 1-114
+README.md
+  3e8472f51d9cfded 17
+src/server/ops/git-ops.ts
+  3e8472f51d9cfded 232,239-251,253-266,268,270-273,278-299,301
+src/server/ops/topic-ops.ts
+  3e8472f51d9cfded 8,49-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.2",
+  "base_commit_sha": "19095f972a5db669ac23e66c3c51c01ce891084f",
+  "prompts": {
+    "3e8472f51d9cfded": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2648c4f4-01d0-4592-945e-725f94317eac",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jan Soubusta",
+      "messages": [],
+      "total_additions": 240,
+      "total_deletions": 166,
+      "accepted_lines": 188,
+      "overriden_lines": 0
+    }
+  }
+}
