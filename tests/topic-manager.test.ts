@@ -395,7 +395,13 @@ describe('TopicManager.addFixTask', () => {
   });
 });
 
-describe('TopicManager.acceptFixTask / discardFixTask', () => {
+// acceptFixTask / discardFixTask were removed as part of the "server-side
+// deterministic git" redesign — fix tasks now land via the same
+// `client.task.merge` path as attempts (squash-merge in a temp worktree on
+// the topic branch, followed by onFixAccepted to reply/resolve threads).
+// The describe block below is skipped pending replacement coverage in the
+// hub merge-path tests.
+describe.skip('TopicManager.acceptFixTask / discardFixTask (removed)', () => {
   let db: Database.Database; let repos: RepoStore; let topics: TopicStore; let tasks: TaskStore;
   let gitCalls: Array<{ args: string[]; cwd?: string }>;
   let gitReturnValue: string;

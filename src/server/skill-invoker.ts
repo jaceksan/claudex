@@ -19,13 +19,19 @@ const FALLBACKS: Record<CanonicalAction, (i: RenderInput) => string> = {
 };
 
 function buildFixPrompt(i: RenderInput): string {
-  const parts: string[] = ['Address the following and push a commit. Reply on each addressed item with the commit SHA.'];
+  const parts: string[] = [
+    'Address the items below by editing files in this worktree.',
+    '',
+    'Do NOT run `git add`, `git commit`, `git push`, `gh`, or `glab` — claudex performs commit / merge-into-topic / push / reply-to-thread as deterministic server-side operations once you stop. Running them yourself fights that gate and can get rejected by the remote.',
+    '',
+    'When you are done editing, briefly summarise what you changed for each item (one bullet per thread or check) and stop. That summary is the whole deliverable from this session.',
+  ];
   if (i.fixCtx?.threads?.length) {
-    parts.push('## Review comments');
+    parts.push('', '## Review comments');
     for (const t of i.fixCtx.threads) parts.push(`- ${t.path ?? '(no path)'}:${t.line ?? '?'} — ${t.body}`);
   }
   if (i.fixCtx?.checks?.length) {
-    parts.push('## Failing CI');
+    parts.push('', '## Failing CI');
     for (const c of i.fixCtx.checks) parts.push(`- ${c.name}\n${c.logTail}`);
   }
   return parts.join('\n');

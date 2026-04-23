@@ -416,9 +416,30 @@ export class TopicManager {
     const dirTail = renderBranchTemplate('{repo}__{ticket}__{slug}__claudex_fix__{n}', {
       repo: repoBase, ticket: topic.ticketKey ?? '', slug: topic.slug, n: String(fixN),
     });
+    // Fresh-base guard: fetch the topic branch from the fork remote and
+    // fast-forward the local ref if the remote has moved ahead. Without this,
+    // a fix task spawned after someone committed directly to the topic's
+    // remote branch would base off a stale tip and produce a commit that
+    // doesn't apply cleanly — exactly the state observed in session
+    // b35815f8 where a manual push diverged the remote from local.
+    const topicBranch = topic.topicBranch!;
+    try {
+      await this.d.git(['fetch', repo.forkRemote, topicBranch], repo.path);
+      const remoteSha = (await this.d.git(['rev-parse', `${repo.forkRemote}/${topicBranch}`], repo.path)).trim();
+      const localSha = (await this.d.git(['rev-parse', topicBranch], repo.path)).trim();
+      if (remoteSha && localSha && remoteSha !== localSha) {
+        const mergeBase = (await this.d.git(['merge-base', localSha, remoteSha], repo.path)).trim();
+        if (mergeBase === localSha) {
+          // Fast-forward only — never rewrite local history here.
+          await this.d.git(['update-ref', `refs/heads/${topicBranch}`, remoteSha, localSha], repo.path);
+        }
+      }
+    } catch {
+      // Best-effort; fall through to whatever the local ref points at.
+    }
     const wt = this.d.createWorktree(repo.path, presetUiId, {
       branch: childBranch,
-      base: topic.topicBranch!,
+      base: topicBranch,
       dirName: `${ghUser}/${dirTail}`,
     });
     const session = await this.d.spawnSession({
@@ -429,7 +450,7 @@ export class TopicManager {
       permissionMode: args.permissionMode,
       presetUiId, worktree: wt,
       appendSystemPrompt: orientationHint({
-        cwd: wt.path, branch: childBranch, base: topic.topicBranch!,
+        cwd: wt.path, branch: childBranch, base: topicBranch,
         topicTitle: topic.title, taskLabel: args.label ?? args.type,
       }),
     });
@@ -439,45 +460,6 @@ export class TopicManager {
       childBranch, worktreePath: wt.path,
       parentTrigger: args.parentTrigger,
     });
-  }
-
-  async acceptFixTask(sessionId: string) {
-    const task = this.d.tasks.getBySession(sessionId);
-    if (!task) throw new Error(`task ${sessionId} not found`);
-    if (task.type !== 'fix-comments' && task.type !== 'fix-ci') {
-      throw new Error('not a fix task');
-    }
-    if (task.acceptedAt) throw new Error('task already accepted');
-    if (task.discardedAt) throw new Error('task already discarded');
-
-    const topic = this.d.topics.getById(task.topicId)!;
-    const repo = this.d.repos.getById(topic.repoId)!;
-
-    await this.d.git(['checkout', topic.topicBranch!], repo.path);
-    await this.d.git(['merge', '--squash', task.childBranch!], repo.path);
-
-    const subject = task.label ? `fix(pr): ${task.label}` : 'fix(pr): apply review fixes';
-    const msg = repo.commitTemplate.replace('{subject}', subject);
-    await this.d.git(['commit', '-m', msg], repo.path);
-
-    const commitSha = (await this.d.git(['rev-parse', 'HEAD'], repo.path)).trim();
-
-    await this.d.git(['push', repo.forkRemote, topic.topicBranch!], repo.path);
-
-    if (this.d.prLifecycle) {
-      await this.d.prLifecycle.onFixAccepted(topic, task, commitSha);
-    }
-
-    this.d.tasks.markAccepted(sessionId);
-  }
-
-  async discardFixTask(sessionId: string) {
-    const task = this.d.tasks.getBySession(sessionId);
-    if (!task) throw new Error(`task ${sessionId} not found`);
-    if (task.type !== 'fix-comments' && task.type !== 'fix-ci') {
-      throw new Error('not a fix task');
-    }
-    this.d.tasks.markDiscarded(sessionId);
   }
 
   async deleteTopic(topicId: string) {

@@ -96,6 +96,11 @@ export async function resetStaged(worktreePath: string): Promise<void> {
 }
 
 /** Count commits on `head` not on `base`. */
+/** Return the full commit message (subject + body) of the branch tip. */
+export async function commitMessageAt(repoPath: string, ref: string): Promise<string> {
+  return (await git(['log', '-1', '--format=%B', ref], repoPath)).trimEnd();
+}
+
 export async function aheadCount(repoPath: string, base: string, head: string): Promise<number> {
   const out = (await git(['rev-list', '--count', `${base}..${head}`], repoPath)).trim();
   return Number(out) || 0;
@@ -260,7 +265,24 @@ export async function squashMergeToTopic(args: SquashMergeArgs): Promise<{ sha: 
 
 export async function pushBranch(args: { repoPath: string; remote: string; branch: string }): Promise<string> {
   // Specify both local and remote refs so `git push` is independent of HEAD.
-  return git(['push', '--set-upstream', args.remote, `${args.branch}:${args.branch}`], args.repoPath, LONG_GIT_TIMEOUT);
+  const refspec = `${args.branch}:${args.branch}`;
+  try {
+    return await git(['push', '--set-upstream', args.remote, refspec], args.repoPath, LONG_GIT_TIMEOUT);
+  } catch (e) {
+    const msg = (e as Error).message;
+    // Non-fast-forward on a claudex-managed topic branch usually means the remote
+    // still holds commits from a prior attempt on the same topic name. Retry with
+    // --force-with-lease: it refuses if someone *else* has pushed since our last
+    // fetch, so it's safe for solo topic branches but recovers branch reuse.
+    if (/non-fast-forward|rejected|failed to push/i.test(msg)) {
+      return git(
+        ['push', '--force-with-lease', '--set-upstream', args.remote, refspec],
+        args.repoPath,
+        LONG_GIT_TIMEOUT,
+      );
+    }
+    throw e;
+  }
 }
 
 /**

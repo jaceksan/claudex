@@ -296,8 +296,9 @@ describe('PrLifecycle fix methods', () => {
         threadIds: [],
         checkNames: ['unit-tests'],
       });
-      // git was called for log tail
-      expect(gitCalls.some((g) => g.args.includes('--log-failed'))).toBe(true);
+      // Log tail is fetched via `gh run view --log-failed` directly (not through
+      // the git helper), so we don't assert on gitCalls here. The previous
+      // assertion exercised a broken code path where the args were fed to git.
     });
 
     it('throws "nothing to address" when no threads and no failing checks', async () => {

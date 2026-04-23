@@ -46,19 +46,29 @@ export async function mergeAttemptToTopic(
     throw new Error('Uncommitted changes in the task worktree — Save or Discard changes first.');
   }
 
-  const commits = await gitOps.commitListBetween(repo.path, topic.topicBranch, task.childBranch);
-  const diff = await gitOps.combinedDiff(repo.path, topic.topicBranch, task.childBranch);
-  const message = await generateMergeCommitMessage({
-    cwd: repo.path,
-    topicBranch: topic.topicBranch,
-    taskBranch: task.childBranch,
-    topicTitle: topic.title,
-    taskLabel: task.label,
-    ticketKey: topic.ticketKey,
-    commitList: commits,
-    combinedDiff: diff,
-  });
-  if (!message) throw new Error('Claude returned an empty merge commit message.');
+  // Fast path: single-commit task branches reuse that commit's message (which
+  // already passed Save → hook). Only call `claude -p` when there's a real
+  // multi-commit branch to summarize.
+  const ahead = await gitOps.aheadCount(repo.path, topic.topicBranch, task.childBranch);
+  let message: string;
+  if (ahead === 1) {
+    message = await gitOps.commitMessageAt(repo.path, task.childBranch);
+    if (!message) throw new Error('Task branch has no commit message to reuse.');
+  } else {
+    const commits = await gitOps.commitListBetween(repo.path, topic.topicBranch, task.childBranch);
+    const diff = await gitOps.combinedDiff(repo.path, topic.topicBranch, task.childBranch);
+    message = await generateMergeCommitMessage({
+      cwd: repo.path,
+      topicBranch: topic.topicBranch,
+      taskBranch: task.childBranch,
+      topicTitle: topic.title,
+      taskLabel: task.label,
+      ticketKey: topic.ticketKey,
+      commitList: commits,
+      combinedDiff: diff,
+    });
+    if (!message) throw new Error('Claude returned an empty merge commit message.');
+  }
 
   const merged = await gitOps.squashMergeToTopic({
     repoPath: repo.path,
@@ -98,8 +108,13 @@ export async function createPrForTopic(
 
   await gitOps.pushBranch({ repoPath: repo.path, remote: repo.forkRemote, branch: topic.topicBranch });
 
-  const commits = await gitOps.commitListBetween(repo.path, repo.defaultBranch, topic.topicBranch);
-  const diff = await gitOps.combinedDiff(repo.path, repo.defaultBranch, topic.topicBranch);
+  // Diff vs the canonical remote default ref (not the local branch), to avoid
+  // picking up unrelated upstream merges that happened since the last local pull.
+  // Topic branches are always created from canonicalRemote/defaultBranch — compare
+  // against the same ref here for consistency.
+  const baseRef = `${repo.canonicalRemote}/${repo.defaultBranch}`;
+  const commits = await gitOps.commitListBetween(repo.path, baseRef, topic.topicBranch);
+  const diff = await gitOps.combinedDiff(repo.path, baseRef, topic.topicBranch);
   const template = gitOps.readPrTemplate(repo.path);
   const { title, body } = await generatePrDescription({
     cwd: repo.path,

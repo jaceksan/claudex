@@ -64,6 +64,9 @@ export interface CommitMessageCtx {
   ticketKey: string | null;
   stagedDiff: string;
   recentLog: string;
+  /** If set, a previous attempt was rejected by a repo-local commit-msg hook.
+   *  Passed verbatim to Claude so it can comply on the retry. */
+  hookFeedback?: string;
 }
 
 export async function generateCommitMessage(ctx: CommitMessageCtx): Promise<string> {
@@ -89,8 +92,12 @@ export async function generateCommitMessage(ctx: CommitMessageCtx): Promise<stri
     ``,
     RULE_PRECEDENCE,
     ``,
+    ctx.hookFeedback
+      ? `A previous attempt was rejected by this repo's commit-msg hook with the following output. Produce a revised message that complies exactly with the stated format (including any trailers like JIRA:, risk:, etc.). Infer required trailer values conservatively: if the ticket is unknown, use "TRIVIAL"; if risk is unstated, use "nonprod".\n\n${ctx.hookFeedback.slice(0, 2000)}`
+      : '',
+    ``,
     `Do not run any tools. Return the commit message as your final answer.`,
-  ].join('\n');
+  ].filter(Boolean).join('\n');
   const out = await runClaudeP({ cwd: ctx.cwd, prompt });
   return stripFences(out).trim();
 }

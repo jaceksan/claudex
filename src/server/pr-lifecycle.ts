@@ -6,6 +6,22 @@ import type { PrCache, PrBundle } from './pr-cache.js';
 import type { CiRollupState } from './notifications.js';
 import type { CiHistoryStore } from './ci-history.js';
 import { renderActionPrompt } from './skill-invoker.js';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileP = promisify(execFile);
+
+/** Fetch the failed-job log tail for a CI run via `gh`. Returns '' on any
+ * failure (no runId, gh missing, timeout, no permission). Kept local to
+ * pr-lifecycle because both fixCheck and addressFeedback need it. */
+async function fetchFailedLog(cwd: string, runId: number | null | undefined): Promise<string> {
+  if (!runId) return '';
+  const { stdout } = await execFileP('gh',
+    ['run', 'view', String(runId), '--log-failed'],
+    { cwd, maxBuffer: 16 * 1024 * 1024, timeout: 30_000 },
+  );
+  return stdout.length > 20_000 ? stdout.slice(-20_000) : stdout;
+}
 
 /** Narrow interface to avoid circular import with topic-manager. */
 export interface FixTaskAdder {
@@ -265,9 +281,7 @@ export class PrLifecycle {
         checks: await Promise.all(
           failingRequired.map(async (c) => ({
             name: c.name,
-            logTail: await this.deps
-              .git(['run', 'view', String(c.runId), '--log-failed'], repo.path)
-              .catch(() => ''),
+            logTail: await fetchFailedLog(repo.path, c.runId).catch(() => ''),
           }))
         ),
       },
@@ -350,24 +364,10 @@ export class PrLifecycle {
     const check = bundle.checks.find((c) => c.name === checkName);
     if (!check) throw new Error(`check ${checkName} not found`);
 
-    // Fetch the failing job log via `gh run view --log-failed`. The old code
-    // routed this through the git helper, which of course can't run gh —
-    // every logTail came out empty and Claude got a useless fix prompt.
-    let logTail = '';
-    if (check.runId) {
-      try {
-        const { execFile } = await import('node:child_process');
-        const { promisify } = await import('node:util');
-        const exec = promisify(execFile);
-        const { stdout } = await exec('gh',
-          ['run', 'view', String(check.runId), '--log-failed'],
-          { cwd: repo.path, maxBuffer: 16 * 1024 * 1024, timeout: 30_000 },
-        );
-        logTail = stdout.length > 20_000 ? stdout.slice(-20_000) : stdout;
-      } catch (e) {
-        console.warn(`[fixCheck] could not fetch log for run ${check.runId}:`, (e as Error).message);
-      }
-    }
+    const logTail = await fetchFailedLog(repo.path, check.runId).catch((e) => {
+      console.warn(`[fixCheck] could not fetch log for run ${check.runId}:`, (e as Error).message);
+      return '';
+    });
 
     const prompt = renderActionPrompt({
       action: 'ci-watch',

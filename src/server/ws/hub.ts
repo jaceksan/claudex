@@ -581,7 +581,7 @@ export class WsHub {
               try {
                 const diff = await gitOps.stagedDiff(worktreePath);
                 const log = await gitOps.recentLog(worktreePath);
-                const message = await generateCommitMessage({
+                const baseCtx = {
                   cwd: worktreePath,
                   branch: task.childBranch ?? '',
                   topicTitle: topic.title,
@@ -589,10 +589,25 @@ export class WsHub {
                   ticketKey: topic.ticketKey,
                   stagedDiff: diff,
                   recentLog: log,
-                });
+                };
+                // First attempt.
+                let message = await generateCommitMessage(baseCtx);
                 if (!message) throw new Error('Claude returned an empty commit message.');
-                const out = await gitOps.commit(worktreePath, message);
-                sha = out.sha;
+                let commitSha: string;
+                try {
+                  commitSha = (await gitOps.commit(worktreePath, message)).sha;
+                } catch (e) {
+                  // If a commit-msg hook rejected the message (common in repos with
+                  // conventional-commit + JIRA/risk trailer enforcement), feed the
+                  // hook's output back to Claude and retry once. Avoids a dead-end
+                  // "save failed" for a purely-formatting issue.
+                  const hookFeedback = (e as Error).message;
+                  if (!/commit failed/i.test(hookFeedback)) throw e;
+                  message = await generateCommitMessage({ ...baseCtx, hookFeedback });
+                  if (!message) throw new Error('Claude returned an empty commit message on retry.');
+                  commitSha = (await gitOps.commit(worktreePath, message)).sha;
+                }
+                sha = commitSha;
                 subject = message.split('\n')[0]?.trim() ?? '';
               } catch (e) {
                 await gitOps.resetStaged(worktreePath);
@@ -684,19 +699,31 @@ export class WsHub {
                 );
                 return;
               }
-              const commits = await gitOps.commitListBetween(repo.path, topicBranch, taskBranch);
-              const diff = await gitOps.combinedDiff(repo.path, topicBranch, taskBranch);
-              const message = await generateMergeCommitMessage({
-                cwd: repo.path,
-                topicBranch,
-                taskBranch,
-                topicTitle: topic.title,
-                taskLabel: task.label,
-                ticketKey: topic.ticketKey,
-                commitList: commits,
-                combinedDiff: diff,
-              });
-              if (!message) throw new Error('Claude returned an empty merge commit message.');
+              // Fast path: if the task branch has exactly one commit, reuse that
+              // commit's own message verbatim for the squash. It already went through
+              // Save → generateCommitMessage + any commit-msg hook, so it's the
+              // authoritative message and we skip a (slow) `claude -p` roundtrip.
+              // Multi-commit branches still need Claude to synthesize a subject.
+              const ahead = await gitOps.aheadCount(repo.path, topicBranch, taskBranch);
+              let message: string;
+              if (ahead === 1) {
+                message = await gitOps.commitMessageAt(repo.path, taskBranch);
+                if (!message) throw new Error('Task branch has no commit message to reuse.');
+              } else {
+                const commits = await gitOps.commitListBetween(repo.path, topicBranch, taskBranch);
+                const diff = await gitOps.combinedDiff(repo.path, topicBranch, taskBranch);
+                message = await generateMergeCommitMessage({
+                  cwd: repo.path,
+                  topicBranch,
+                  taskBranch,
+                  topicTitle: topic.title,
+                  taskLabel: task.label,
+                  ticketKey: topic.ticketKey,
+                  commitList: commits,
+                  combinedDiff: diff,
+                });
+                if (!message) throw new Error('Claude returned an empty merge commit message.');
+              }
               const merged = await gitOps.squashMergeToTopic({
                 repoPath: repo.path,
                 topicBranch,
@@ -705,10 +732,27 @@ export class WsHub {
                 tmpWorktreeRoot: pathJoin(homedir(), '.claudex', 'worktrees'),
               });
               td.tasks.markAccepted(sessionId);
-              td.topics.setPhase(topic.id, topic.phase === 'Open' ? 'Open' : 'Draft', { acceptedAttemptId: sessionId });
-              for (const t of td.tasks.listByTopic(topic.id)) {
-                if (t.type === 'attempt' && t.sessionId !== sessionId && !t.acceptedAt && !t.discardedAt) {
-                  td.tasks.markDiscarded(t.sessionId);
+              if (task.type === 'attempt') {
+                // Only an attempt becomes "the accepted attempt" — fix tasks
+                // add commits to an already-accepted topic and must not overwrite
+                // the acceptedAttemptId pointer used by the timeline + gating.
+                td.topics.setPhase(topic.id, topic.phase === 'Open' ? 'Open' : 'Draft', { acceptedAttemptId: sessionId });
+                for (const t of td.tasks.listByTopic(topic.id)) {
+                  if (t.type === 'attempt' && t.sessionId !== sessionId && !t.acceptedAt && !t.discardedAt) {
+                    td.tasks.markDiscarded(t.sessionId);
+                  }
+                }
+              } else if (task.type === 'fix-comments' || task.type === 'fix-ci') {
+                // Fire server-side reply/resolve on the originating review threads
+                // using the squash commit SHA. Previously the seeded prompt asked
+                // Claude to push + reply inline, which fought the deterministic
+                // git path and left threads unresolved whenever the push collided.
+                if (td.prLifecycle) {
+                  try {
+                    await td.prLifecycle.onFixAccepted(topic, task, merged.sha);
+                  } catch (e) {
+                    console.error('[task.merge] onFixAccepted failed', e);
+                  }
                 }
               }
               this.broadcast(buildTopicState(td));
@@ -755,8 +799,15 @@ export class WsHub {
 
             // Pre-bake context for the text generator — commit list, combined
             // diff vs base, optional PR template.
-            const commits = await gitOps.commitListBetween(repo.path, repo.defaultBranch, topic.topicBranch);
-            const diff = await gitOps.combinedDiff(repo.path, repo.defaultBranch, topic.topicBranch);
+            //
+            // IMPORTANT: compare against the *canonical remote* default ref, not the
+            // local default branch. The topic branch was created from
+            // `<canonicalRemote>/<defaultBranch>` (topic-manager.create), so diffing
+            // against a stale local `main` would include every unrelated PR merged
+            // upstream since the user last pulled, producing wildly misleading PRs.
+            const baseRef = `${repo.canonicalRemote}/${repo.defaultBranch}`;
+            const commits = await gitOps.commitListBetween(repo.path, baseRef, topic.topicBranch);
+            const diff = await gitOps.combinedDiff(repo.path, baseRef, topic.topicBranch);
             const template = gitOps.readPrTemplate(repo.path);
             const { title: genTitle, body: genBody } = await generatePrDescription({
               cwd: repo.path,
