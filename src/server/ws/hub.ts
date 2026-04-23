@@ -16,7 +16,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { isEffortLevel } from '../session/state.js';
 import * as gitOps from '../ops/git-ops.js';
-import { generateCommitMessage, generateMergeCommitMessage, generatePrDescription } from '../ops/text-gen.js';
+import { generateCommitMessage, generatePrDescription } from '../ops/text-gen.js';
 import { homedir } from 'node:os';
 import { join as pathJoin } from 'node:path';
 import type { CiHistoryStore } from '../ci-history.js';
@@ -699,36 +699,15 @@ export class WsHub {
                 );
                 return;
               }
-              // Fast path: if the task branch has exactly one commit, reuse that
-              // commit's own message verbatim for the squash. It already went through
-              // Save → generateCommitMessage + any commit-msg hook, so it's the
-              // authoritative message and we skip a (slow) `claude -p` roundtrip.
-              // Multi-commit branches still need Claude to synthesize a subject.
-              const ahead = await gitOps.aheadCount(repo.path, topicBranch, taskBranch);
-              let message: string;
-              if (ahead === 1) {
-                message = await gitOps.commitMessageAt(repo.path, taskBranch);
-                if (!message) throw new Error('Task branch has no commit message to reuse.');
-              } else {
-                const commits = await gitOps.commitListBetween(repo.path, topicBranch, taskBranch);
-                const diff = await gitOps.combinedDiff(repo.path, topicBranch, taskBranch);
-                message = await generateMergeCommitMessage({
-                  cwd: repo.path,
-                  topicBranch,
-                  taskBranch,
-                  topicTitle: topic.title,
-                  taskLabel: task.label,
-                  ticketKey: topic.ticketKey,
-                  commitList: commits,
-                  combinedDiff: diff,
-                });
-                if (!message) throw new Error('Claude returned an empty merge commit message.');
-              }
-              const merged = await gitOps.squashMergeToTopic({
+              // Preserve commit granularity on merge: fast-forward when the
+              // task branch is a linear descendant of topic, cherry-pick when
+              // topic has diverged. Never squash — that would collapse each
+              // commit's already-validated message into one synthesised blob
+              // and re-invoke `claude -p` for nothing.
+              const merged = await gitOps.mergeTaskIntoTopic({
                 repoPath: repo.path,
                 topicBranch,
                 taskBranch,
-                message,
                 tmpWorktreeRoot: pathJoin(homedir(), '.claudex', 'worktrees'),
               });
               td.tasks.markAccepted(sessionId);
@@ -757,9 +736,11 @@ export class WsHub {
               }
               this.broadcast(buildTopicState(td));
               this.broadcastTopicDetail(task.topicId, await buildTopicDetail(task.topicId, td));
-              const subject = message.split('\n')[0]?.trim() ?? '';
+              const how = merged.kind === 'fast-forward'
+                ? `fast-forwarded to ${merged.sha.slice(0, 7)}`
+                : `cherry-picked ${merged.count} commit${merged.count === 1 ? '' : 's'} onto ${topicBranch} (new tip ${merged.sha.slice(0, 7)})`;
               this.notifySession(sessionId,
-                `This task was squash-merged into ${topicBranch} as ${merged.sha.slice(0, 7)}: ${subject}. No action required — this is an automated note.`,
+                `Task merged into ${topicBranch}: ${how}. No action required — this is an automated note.`,
               );
             } catch (e) {
               this.send(ws, { type: 'server.topic.error', payload: { message: (e as Error).message, ctx: 'merge' } });

@@ -96,11 +96,6 @@ export async function resetStaged(worktreePath: string): Promise<void> {
 }
 
 /** Count commits on `head` not on `base`. */
-/** Return the full commit message (subject + body) of the branch tip. */
-export async function commitMessageAt(repoPath: string, ref: string): Promise<string> {
-  return (await git(['log', '-1', '--format=%B', ref], repoPath)).trimEnd();
-}
-
 export async function aheadCount(repoPath: string, base: string, head: string): Promise<number> {
   const out = (await git(['rev-list', '--count', `${base}..${head}`], repoPath)).trim();
   return Number(out) || 0;
@@ -234,30 +229,76 @@ export async function hasUnpushedCommits(repoPath: string, branch: string, canon
   }
 }
 
-export interface SquashMergeArgs {
+export interface MergeTaskArgs {
   repoPath: string;
   topicBranch: string;
   taskBranch: string;
-  message: string;
   tmpWorktreeRoot: string;   // e.g. ~/.claudex/worktrees
 }
 
+export interface MergeTaskResult {
+  /** New HEAD of the topic branch after the merge. */
+  sha: string;
+  /** How the merge was realised:
+   *  - 'fast-forward' when the topic branch simply advanced to the task tip
+   *    (no new commit, all SHAs preserved). This is the common case.
+   *  - 'cherry-pick' when topic has diverged from task and each task commit
+   *    was replayed on top of topic (new SHAs, same messages + diffs). */
+  kind: 'fast-forward' | 'cherry-pick';
+  /** Number of commits that ended up on topic as a result of this merge. */
+  count: number;
+}
+
 /**
- * Squash-merge `taskBranch` into `topicBranch` in an isolated temp worktree
- * so we never touch (or depend on the state of) the main clone's checkout.
- * Caller is responsible for making sure the task worktree is clean.
+ * Merge `taskBranch` into `topicBranch` while preserving per-commit granularity.
+ * Runs in an isolated temp worktree so we never touch the main clone's
+ * checkout or depend on its state. Caller must ensure the task worktree is
+ * clean (the mergeAttemptToTopic wrapper already checks this).
+ *
+ * Algorithm:
+ *   1. `topicBranch..taskBranch` empty  → error ("nothing to merge").
+ *   2. `taskBranch..topicBranch` empty  → task is a linear descendant of topic,
+ *      so fast-forward topic to the task tip. Preserves commit SHAs and
+ *      messages verbatim — no `claude -p`, no rewritten history.
+ *   3. Otherwise (divergent history)    → cherry-pick `topic..task` onto topic
+ *      one commit at a time. Each cherry-pick keeps the original message; the
+ *      SHAs change because the parent is different. On any conflict, abort
+ *      cleanly and throw so the caller can surface an actionable error.
  */
-export async function squashMergeToTopic(args: SquashMergeArgs): Promise<{ sha: string }> {
+export async function mergeTaskIntoTopic(args: MergeTaskArgs): Promise<MergeTaskResult> {
   const ahead = await aheadCount(args.repoPath, args.topicBranch, args.taskBranch);
-  if (ahead === 0) throw new Error('Task branch has no new commits beyond the topic branch — nothing to merge.');
+  if (ahead === 0) {
+    throw new Error('Task branch has no new commits beyond the topic branch — nothing to merge.');
+  }
+  const behind = await aheadCount(args.repoPath, args.taskBranch, args.topicBranch);
 
   const tmpPath = join(args.tmpWorktreeRoot, `.tmp-merge-${Date.now().toString(36)}`);
   await git(['worktree', 'add', tmpPath, args.topicBranch], args.repoPath);
   try {
-    await git(['merge', '--squash', args.taskBranch], tmpPath);
-    await git(['commit', '-m', args.message], tmpPath);
+    if (behind === 0) {
+      // Linear: fast-forward topic to task tip. --ff-only is defensive — if
+      // anything changed between our aheadCount read and here, refuse rather
+      // than silently making a merge commit.
+      await git(['merge', '--ff-only', args.taskBranch], tmpPath);
+      const sha = (await git(['rev-parse', 'HEAD'], tmpPath)).trim();
+      return { sha, kind: 'fast-forward', count: ahead };
+    }
+    // Divergent: cherry-pick `topic..task`. Using the range form lets git
+    // walk the commits in chronological order and replay each with its
+    // original message + authorship preserved. On conflict, --abort leaves
+    // the working tree clean so worktree-remove won't complain.
+    try {
+      await git(['cherry-pick', `${args.topicBranch}..${args.taskBranch}`], tmpPath);
+    } catch (e) {
+      try { await git(['cherry-pick', '--abort'], tmpPath); } catch { /* ignore */ }
+      const msg = (e as Error).message;
+      throw new Error(
+        `Cherry-pick conflict while merging ${args.taskBranch} into ${args.topicBranch}. ` +
+        `Resolve by rebasing the task branch on the current topic tip and try again.\n\n${msg}`,
+      );
+    }
     const sha = (await git(['rev-parse', 'HEAD'], tmpPath)).trim();
-    return { sha };
+    return { sha, kind: 'cherry-pick', count: ahead };
   } finally {
     try { await git(['worktree', 'remove', '--force', tmpPath], args.repoPath); } catch { /* best-effort */ }
   }

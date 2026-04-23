@@ -5,7 +5,7 @@ import type { TopicStore } from '../topic.js';
 import type { RepoStore } from '../repo.js';
 import type { PrLifecycle } from '../pr-lifecycle.js';
 import * as gitOps from './git-ops.js';
-import { generateMergeCommitMessage, generatePrDescription } from './text-gen.js';
+import { generatePrDescription } from './text-gen.js';
 
 /**
  * Higher-level topic orchestration: the git/gh dance plus DB bookkeeping for
@@ -46,35 +46,14 @@ export async function mergeAttemptToTopic(
     throw new Error('Uncommitted changes in the task worktree — Save or Discard changes first.');
   }
 
-  // Fast path: single-commit task branches reuse that commit's message (which
-  // already passed Save → hook). Only call `claude -p` when there's a real
-  // multi-commit branch to summarize.
-  const ahead = await gitOps.aheadCount(repo.path, topic.topicBranch, task.childBranch);
-  let message: string;
-  if (ahead === 1) {
-    message = await gitOps.commitMessageAt(repo.path, task.childBranch);
-    if (!message) throw new Error('Task branch has no commit message to reuse.');
-  } else {
-    const commits = await gitOps.commitListBetween(repo.path, topic.topicBranch, task.childBranch);
-    const diff = await gitOps.combinedDiff(repo.path, topic.topicBranch, task.childBranch);
-    message = await generateMergeCommitMessage({
-      cwd: repo.path,
-      topicBranch: topic.topicBranch,
-      taskBranch: task.childBranch,
-      topicTitle: topic.title,
-      taskLabel: task.label,
-      ticketKey: topic.ticketKey,
-      commitList: commits,
-      combinedDiff: diff,
-    });
-    if (!message) throw new Error('Claude returned an empty merge commit message.');
-  }
-
-  const merged = await gitOps.squashMergeToTopic({
+  // Preserve commit granularity: fast-forward when possible, cherry-pick on
+  // divergence. Never squash — the per-commit messages already passed Save →
+  // commit-msg hook, and collapsing them would re-invoke `claude -p` just to
+  // throw away information.
+  const merged = await gitOps.mergeTaskIntoTopic({
     repoPath: repo.path,
     topicBranch: topic.topicBranch,
     taskBranch: task.childBranch,
-    message,
     tmpWorktreeRoot: pathJoin(homedir(), '.claudex', 'worktrees'),
   });
 

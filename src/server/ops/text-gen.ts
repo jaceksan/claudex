@@ -102,47 +102,6 @@ export async function generateCommitMessage(ctx: CommitMessageCtx): Promise<stri
   return stripFences(out).trim();
 }
 
-export interface MergeCommitCtx {
-  cwd: string;
-  topicBranch: string;
-  taskBranch: string;
-  topicTitle: string;
-  taskLabel: string | null;
-  ticketKey: string | null;
-  commitList: string;      // `git log --oneline <topic>..<task>`
-  combinedDiff: string;    // `git diff <topic>..<task>`
-}
-
-export async function generateMergeCommitMessage(ctx: MergeCommitCtx): Promise<string> {
-  const diff = ctx.combinedDiff.length > 60_000
-    ? ctx.combinedDiff.slice(0, 60_000) + '\n…[truncated for prompt size]'
-    : ctx.combinedDiff;
-  const prompt = [
-    `Write a squash-merge commit message that captures the work of a task about to be folded into a topic branch. Return ONLY the commit message text — no preamble, no markdown fence.`,
-    ``,
-    `Context:`,
-    `- topic: "${ctx.topicTitle}"`,
-    `- task: ${ctx.taskLabel ?? '(unnamed)'}`,
-    `- task branch: ${ctx.taskBranch}`,
-    `- merging into: ${ctx.topicBranch}`,
-    ctx.ticketKey ? `- ticket: ${ctx.ticketKey}` : '',
-    ``,
-    `Commits on the task branch (most recent first):`,
-    ctx.commitList.trim() || '(none)',
-    ``,
-    `Combined diff (task branch vs topic branch):`,
-    '```diff',
-    diff,
-    '```',
-    ``,
-    RULE_PRECEDENCE,
-    ``,
-    `Do not run any tools. Return the commit message as your final answer.`,
-  ].filter(Boolean).join('\n');
-  const out = await runClaudeP({ cwd: ctx.cwd, prompt });
-  return stripFences(out).trim();
-}
-
 export interface PrTextCtx {
   cwd: string;
   topicBranch: string;
