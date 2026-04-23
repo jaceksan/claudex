@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Check } from '../../server/vcs/adapter';
+import type { Check, StatusCheckRollup } from '../../server/vcs/adapter';
 
 type Bucket = 'errors' | 'running' | 'passed' | 'skipped';
 
@@ -23,6 +23,7 @@ export function CiPanel({
   onSuppress,
   onUnsuppress,
   onRetry,
+  prStatusRollup = null,
 }: {
   checks: Check[];
   /** Unused; kept in the props for future "mark non-voting" work. */
@@ -33,6 +34,11 @@ export function CiPanel({
   flakyChecks?: string[];
   watchEnabled: boolean;
   loading?: boolean;
+  /** PR-level aggregate from GitHub's statusCheckRollup — covers queued
+   *  check-suites that haven't emitted any runs yet. When this says
+   *  PENDING, something is still cooking upstream even if every check-run
+   *  we see is green; we flip the rollup to pending accordingly. */
+  prStatusRollup?: StatusCheckRollup;
   onFix: (checkName: string) => void;
   /** Set of keys like `check:<name>` indicating a Fix click is in-flight. */
   pendingFixes?: Set<string>;
@@ -57,8 +63,19 @@ export function CiPanel({
   const skipped = active.filter((c) => bucketOf(c) === 'skipped');
 
   const anyRunning = running.length > 0;
-  const rollup: 'passing' | 'failing' | 'pending' =
+  // Local view of the checks we actually see. Accurate when every suite on
+  // the head commit has already emitted check-runs; incomplete when some
+  // suites are still queued.
+  const localRollup: 'passing' | 'failing' | 'pending' =
     errors.length > 0 ? 'failing' : anyRunning ? 'pending' : 'passing';
+  // Server-side override: if GitHub's PR rollup says PENDING, something is
+  // queued that hasn't produced a check-run yet. Keep the badge on
+  // "pending" so we don't claim "all checks passing" while CI is still
+  // spinning up. We don't surface those queued suites as individual rows
+  // (user asked to keep them out of the panel).
+  const rollup: 'passing' | 'failing' | 'pending' =
+    prStatusRollup === 'PENDING' && localRollup === 'passing' ? 'pending' : localRollup;
+  const showPendingBadge = rollup === 'pending';
 
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
@@ -71,8 +88,11 @@ export function CiPanel({
             //   any check running                 → amber pulse
             //   any error                         → red solid
             //   all done + ok                     → green solid
-            if (loading || anyRunning) {
-              return <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" title={loading ? 'Waiting for first checks…' : 'Some checks still running'} />;
+            if (loading || anyRunning || showPendingBadge) {
+              const title = loading ? 'Waiting for first checks…'
+                : anyRunning ? 'Some checks still running'
+                : 'CI still pending — queued suite(s) not started yet';
+              return <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" title={title} />;
             }
             if (errors.length > 0) {
               return <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500" title="CI failing" />;

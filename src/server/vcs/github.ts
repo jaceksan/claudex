@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { VcsAdapter, PR, RepoSummary, ReviewThread, Check } from './adapter.js';
+import type { VcsAdapter, PR, RepoSummary, ReviewThread, Check, StatusCheckRollup } from './adapter.js';
 
 const execFileP = promisify(execFile);
 
@@ -39,6 +39,11 @@ export class GitHubAdapter implements VcsAdapter {
     const out = await this.gh(['pr', 'view', String(n),
       '--json', 'number,url,title,body,state,baseRefName,headRefName,author,mergeable,reviewDecision'], cwd);
     const j = JSON.parse(out);
+    // Canonical CI rollup — one GraphQL query that aggregates check-runs,
+    // check-suites, and legacy status contexts on the PR head commit.
+    // Without this, listChecks() misses queued suites that haven't emitted
+    // runs yet and the UI falsely reports "all passing".
+    const statusCheckRollup = await this.fetchStatusCheckRollup(cwd, n).catch(() => null);
     return {
       number: j.number, url: j.url, title: j.title, body: j.body, state: j.state,
       baseBranch: j.baseRefName, headBranch: j.headRefName,
@@ -46,7 +51,23 @@ export class GitHubAdapter implements VcsAdapter {
       // TODO: populate from review nodes when needed.
       approvalsCount: 0, // TODO: query branch-protection for real required-approvals count; MVP defaults to 1.
       requiredApprovals: 1,
+      statusCheckRollup,
     };
+  }
+
+  /** Read the head commit's aggregated rollup via GraphQL. Returns null if
+   *  GitHub has no state recorded yet (freshly pushed branch, no CI bots
+   *  subscribed) — caller should treat that as "unknown" and fall back to
+   *  the local check-run view. */
+  private async fetchStatusCheckRollup(cwd: string, n: number): Promise<StatusCheckRollup> {
+    const repo = await this.getRepo(cwd);
+    const query = `query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){commits(last:1){nodes{commit{statusCheckRollup{state}}}}}}}`;
+    const out = await this.gh(['api', 'graphql', '-f', `query=${query}`,
+      '-f', `owner=${repo.owner}`, '-f', `repo=${repo.name}`, '-F', `number=${n}`], cwd);
+    const j = JSON.parse(out);
+    const state = j?.data?.repository?.pullRequest?.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state;
+    if (state === 'PENDING' || state === 'SUCCESS' || state === 'FAILURE' || state === 'ERROR' || state === 'EXPECTED') return state;
+    return null;
   }
 
   /**

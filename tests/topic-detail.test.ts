@@ -15,6 +15,7 @@ function makePR(number: number): PR {
     title: 'Test PR', body: '', state: 'OPEN',
     baseBranch: 'main', headBranch: 'feat/branch',
     author: 'jaceksan', mergeable: null, approvalsCount: 0, requiredApprovals: 1,
+    statusCheckRollup: null,
   };
 }
 

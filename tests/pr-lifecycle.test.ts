@@ -22,6 +22,7 @@ function makeFakePR(number: number): PR {
     mergeable: null,
     approvalsCount: 0,
     requiredApprovals: 1,
+    statusCheckRollup: null,
   };
 }
 

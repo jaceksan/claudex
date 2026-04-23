@@ -15,6 +15,7 @@ function makeAdapter(): VcsAdapter & { callCount: number } {
     mergeable: true,
     approvalsCount: 0,
     requiredApprovals: 1,
+    statusCheckRollup: null,
   };
   const threads: ReviewThread[] = [{ id: 't1', isResolved: false, comments: [] }];
   const checks: Check[] = [

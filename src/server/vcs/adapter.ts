@@ -6,6 +6,15 @@ export interface RepoSummary {
   parentName?: string;
 }
 
+/** Canonical PR-level CI rollup, one value covering all check-runs +
+ *  check-suites + legacy status contexts on the head commit. `PENDING`
+ *  covers queued suites that haven't emitted individual check-runs yet,
+ *  which the `/commits/:sha/check-runs` endpoint (what `listChecks` uses)
+ *  would otherwise miss — leaving the UI to falsely report "all passing".
+ *  `null` means the adapter couldn't determine it; UI should fall back to
+ *  the local check-run list in that case. */
+export type StatusCheckRollup = 'PENDING' | 'SUCCESS' | 'FAILURE' | 'ERROR' | 'EXPECTED' | null;
+
 export interface PR {
   number: number;
   url: string;
@@ -18,6 +27,7 @@ export interface PR {
   mergeable: boolean | null;
   approvalsCount: number;
   requiredApprovals: number;
+  statusCheckRollup: StatusCheckRollup;
 }
 
 export interface ReviewThreadComment {

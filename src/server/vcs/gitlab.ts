@@ -58,6 +58,9 @@ export class GitLabAdapter implements VcsAdapter {
       mergeable: j.merge_status === 'can_be_merged' ? true : j.merge_status === 'cannot_be_merged' ? false : null,
       approvalsCount: 0, // TODO: map from approvals API
       requiredApprovals: 1,
+      // GitLab doesn't expose an equivalent single-flag rollup here; leave
+      // null and let the UI fall back to its local check-run view.
+      statusCheckRollup: null,
     };
   }
 

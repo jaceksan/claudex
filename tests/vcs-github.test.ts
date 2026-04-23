@@ -46,6 +46,24 @@ describe('GitHubAdapter', () => {
     expect(pr.headBranch).toBe('jaceksan/ABC-123_fix-login');
     expect(pr.author).toBe('jaceksan');
     expect(pr.mergeable).toBe(true);
+    // When the GraphQL rollup call isn't stubbed, getPR falls back to null
+    // rather than propagating the error — callers treat null as "unknown".
+    expect(pr.statusCheckRollup).toBeNull();
+  });
+
+  it('getPR populates statusCheckRollup from GraphQL when available', async () => {
+    const a = new GitHubAdapter({
+      exec: stubExec({
+        'pr view': fx('pr-view.json'),
+        'repo view': fx('repo-view.json'),
+        'api graphql': fx('status-check-rollup-pending.json'),
+      }),
+    });
+    const pr = await a.getPR('/tmp/r', 4711);
+    // PENDING means a check-suite is queued but has not emitted any
+    // check-runs yet — the UI uses this to avoid claiming "all passing"
+    // while CI is still spinning up.
+    expect(pr.statusCheckRollup).toBe('PENDING');
   });
 
   it('listReviewThreads maps GraphQL response to ReviewThread[]', async () => {

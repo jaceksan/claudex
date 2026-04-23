@@ -197,6 +197,7 @@ export default function TopicPage({ id }: { id: string }) {
                   // first real poll — without this the CI card looks dead
                   // for up to ~20 seconds.
                   loading={creatingPR || (!!pr && (checks ?? []).length === 0)}
+                  prStatusRollup={pr?.statusCheckRollup ?? null}
                   onFix={handleFixCheck}
                   pendingFixes={pendingFixes}
                   onWatchToggle={handleWatchToggle}
