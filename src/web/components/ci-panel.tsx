@@ -17,6 +17,7 @@ export function CiPanel({
   nonVotingChecks = [],
   flakyChecks = [],
   onFix,
+  pendingFixes,
   onWatchToggle,
   onRefresh,
   onSuppress,
@@ -33,6 +34,8 @@ export function CiPanel({
   watchEnabled: boolean;
   loading?: boolean;
   onFix: (checkName: string) => void;
+  /** Set of keys like `check:<name>` indicating a Fix click is in-flight. */
+  pendingFixes?: Set<string>;
   onWatchToggle: (enable: boolean) => void;
   onRefresh?: () => void;
   onSuppress?: (checkName: string, reason?: string) => void;
@@ -136,9 +139,11 @@ export function CiPanel({
                   <button
                     type="button"
                     onClick={() => onFix(c.name)}
-                    className="rounded bg-red-800 px-2 py-0.5 text-xs text-white hover:bg-red-700"
+                    disabled={pendingFixes?.has(`check:${c.name}`) ?? false}
+                    className="rounded bg-red-800 px-2 py-0.5 text-xs text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-900/60 disabled:text-red-200/80"
+                    title={pendingFixes?.has(`check:${c.name}`) ? 'Fix task is being created…' : undefined}
                   >
-                    Fix
+                    {pendingFixes?.has(`check:${c.name}`) ? 'Starting…' : 'Fix'}
                   </button>
                   {onRetry && c.runId !== undefined && c.runId !== null && (
                     <button

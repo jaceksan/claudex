@@ -16,17 +16,36 @@ export default function TopicPage({ id }: { id: string }) {
   const [showAddAttempt, setShowAddAttempt] = useState(false);
   const [error, setError] = useState<{ ctx: string; message: string } | null>(null);
   const [creatingPR, setCreatingPR] = useState(false);
+  const [closingPR, setClosingPR] = useState(false);
+  // Keys: `thread:<id>` or `check:<name>` — used to disable Fix buttons and show a
+  // pulse banner until the server's next topic.detail (which carries the new task).
+  const [pendingFixes, setPendingFixes] = useState<Set<string>>(() => new Set());
+  // sessionIds with an in-flight save/merge/discard — used to disable the per-task
+  // buttons and show a "Saving…" / "Merging…" state until the next topic.detail
+  // arrives (or the server reports an error with matching ctx).
+  const [pendingTaskOps, setPendingTaskOps] = useState<Map<string, 'saving' | 'merging' | 'discarding'>>(() => new Map());
 
   useEffect(() => {
     return subscribe((m) => {
       if (m.type === 'server.topic.error') {
         setError({ ctx: m.payload.ctx ?? 'action', message: m.payload.message });
         if (m.payload.ctx === 'createPR') setCreatingPR(false);
+        if (m.payload.ctx === 'closePR') setClosingPR(false);
+        if (m.payload.ctx === 'fixComment' || m.payload.ctx === 'fixCheck') setPendingFixes(new Set());
+        if (m.payload.ctx === 'save' || m.payload.ctx === 'merge' || m.payload.ctx === 'discardChanges' || m.payload.ctx === 'discardHard') {
+          setPendingTaskOps(new Map()); // conservative: clear all pending task ops on any task error
+        }
       } else if (m.type === 'server.topic.detail' && m.payload.topicId === id) {
         // Fresh detail arrived → stale error probably no longer relevant.
         setError(null);
         // If the PR just landed, turn the "creating" hint off.
         if (m.payload.pr) setCreatingPR(false);
+        // If the topic is now Closed/Merged, clear the closing hint.
+        if (m.payload.topic.phase === 'Closed' || m.payload.topic.phase === 'Merged') setClosingPR(false);
+        // A new topic.detail after a Fix click means the task has been created on the server.
+        setPendingFixes(new Set());
+        // Any in-flight task op has either finished or errored by now — clear the map.
+        setPendingTaskOps(new Map());
       }
     });
   }, [id]);
@@ -41,16 +60,27 @@ export default function TopicPage({ id }: { id: string }) {
 
   const { topic, tasks, pr, threads, checks, required, nonVotingChecks, flakyChecks } = detail;
 
+  function markPending(sessionId: string, op: 'saving' | 'merging' | 'discarding') {
+    setPendingTaskOps((prev) => {
+      const next = new Map(prev);
+      next.set(sessionId, op);
+      return next;
+    });
+  }
   function handleSaveTask(sessionId: string) {
+    markPending(sessionId, 'saving');
     send({ type: 'client.task.save', payload: { sessionId } });
   }
   function handleDiscardTaskChanges(sessionId: string) {
+    markPending(sessionId, 'discarding');
     send({ type: 'client.task.discardChanges', payload: { sessionId } });
   }
   function handleDiscardTaskHard(sessionId: string) {
+    markPending(sessionId, 'discarding');
     send({ type: 'client.task.discardHard', payload: { sessionId } });
   }
   function handleMergeTask(sessionId: string) {
+    markPending(sessionId, 'merging');
     send({ type: 'client.task.merge', payload: { sessionId } });
   }
   function handlePushTopic() {
@@ -65,6 +95,7 @@ export default function TopicPage({ id }: { id: string }) {
     send({ type: 'client.topic.subscribe', payload: { topicId: id } });
   }
   function handleClosePR() {
+    setClosingPR(true);
     send({ type: 'client.pr.close', payload: { topicId: id } });
   }
   function handleSuppressCheck(checkName: string, reason?: string) {
@@ -83,12 +114,14 @@ export default function TopicPage({ id }: { id: string }) {
     send({ type: 'client.pr.addressFeedback', payload: { topicId: id, includeCi, includeComments } });
   }
   function handleFixComment(threadId: string) {
+    setPendingFixes((prev) => new Set(prev).add(`thread:${threadId}`));
     send({ type: 'client.pr.fixComment', payload: { topicId: id, threadId } });
   }
   function handleReplyThread(threadId: string, body: string) {
     send({ type: 'client.thread.reply', payload: { topicId: id, threadId, body } });
   }
   function handleFixCheck(checkName: string) {
+    setPendingFixes((prev) => new Set(prev).add(`check:${checkName}`));
     send({ type: 'client.pr.fixCheck', payload: { topicId: id, checkName } });
   }
   function handleWatchToggle(enable: boolean) {
@@ -113,6 +146,18 @@ export default function TopicPage({ id }: { id: string }) {
           Creating pull request — pushing branch and calling gh…
         </div>
       )}
+      {pendingFixes.size > 0 && (
+        <div className="flex items-center gap-2 border-b border-blue-500/30 bg-blue-950/30 px-6 py-2 text-sm text-blue-200">
+          <span className="inline-block h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
+          Spawning fix task{pendingFixes.size > 1 ? 's' : ''} — creating worktree and starting Claude…
+        </div>
+      )}
+      {closingPR && (
+        <div className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-950/30 px-6 py-2 text-sm text-amber-200">
+          <span className="inline-block h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+          Closing pull request — calling gh and refreshing topic state…
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-7xl p-4">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -125,6 +170,7 @@ export default function TopicPage({ id }: { id: string }) {
               onDiscardChanges={handleDiscardTaskChanges}
               onDiscardHard={handleDiscardTaskHard}
               onMerge={handleMergeTask}
+              pendingTaskOps={pendingTaskOps}
             />
             <div className="flex flex-col gap-4">
               {pr && threads && threads.length > 0 && (
@@ -132,6 +178,7 @@ export default function TopicPage({ id }: { id: string }) {
                   threads={threads}
                   onFix={handleFixComment}
                   onReply={handleReplyThread}
+                  pendingFixes={pendingFixes}
                 />
               )}
               {(pr || creatingPR) && (
@@ -146,6 +193,7 @@ export default function TopicPage({ id }: { id: string }) {
                   // for up to ~20 seconds.
                   loading={creatingPR || (!!pr && (checks ?? []).length === 0)}
                   onFix={handleFixCheck}
+                  pendingFixes={pendingFixes}
                   onWatchToggle={handleWatchToggle}
                   onRefresh={pr ? handleRefreshCI : undefined}
                   onSuppress={handleSuppressCheck}
@@ -171,6 +219,7 @@ export default function TopicPage({ id }: { id: string }) {
         onClosePR={handleClosePR}
         onSync={handleSyncTopic}
         creatingPR={creatingPR}
+        closingPR={closingPR}
       />
       {showAddAttempt && (
         <AddTaskModal topicId={id} onClose={() => setShowAddAttempt(false)} />

@@ -5,10 +5,12 @@ export function CommentsPanel({
   threads,
   onFix,
   onReply,
+  pendingFixes,
 }: {
   threads: ReviewThread[];
   onFix: (threadId: string) => void;
   onReply: (threadId: string, body: string) => void;
+  pendingFixes?: Set<string>;
 }) {
   const unresolved = threads.filter((t) => !t.isResolved);
 
@@ -26,6 +28,7 @@ export function CommentsPanel({
             thread={thread}
             onFix={() => onFix(thread.id)}
             onReply={(body) => onReply(thread.id, body)}
+            pending={pendingFixes?.has(`thread:${thread.id}`) ?? false}
           />
         ))}
       </div>
@@ -37,10 +40,12 @@ function ThreadCard({
   thread,
   onFix,
   onReply,
+  pending,
 }: {
   thread: ReviewThread;
   onFix: () => void;
   onReply: (body: string) => void;
+  pending: boolean;
 }) {
   const [showReply, setShowReply] = useState(false);
   const [replyText, setReplyText] = useState('');
@@ -74,9 +79,11 @@ function ThreadCard({
         <button
           type="button"
           onClick={onFix}
-          className="rounded bg-blue-700 px-2 py-0.5 text-xs text-white hover:bg-blue-600"
+          disabled={pending}
+          className="rounded bg-blue-700 px-2 py-0.5 text-xs text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-blue-900/60 disabled:text-blue-200/80"
+          title={pending ? 'Fix task is being created…' : undefined}
         >
-          Fix
+          {pending ? 'Starting…' : 'Fix'}
         </button>
         <button
           type="button"

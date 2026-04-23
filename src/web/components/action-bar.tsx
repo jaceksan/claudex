@@ -84,6 +84,7 @@ export function ActionBar({
   onClosePR,
   onSync,
   creatingPR = false,
+  closingPR = false,
 }: {
   topic: TopicMeta;
   tasks: TaskRow[];
@@ -98,6 +99,7 @@ export function ActionBar({
   onClosePR: () => void;
   onSync: () => void;
   creatingPR?: boolean;
+  closingPR?: boolean;
 }) {
   const actions = visibleActions(topic, tasks, pr, threads, checks, required);
 
@@ -186,7 +188,7 @@ export function ActionBar({
         </button>
       )}
 
-      {topic.phase === 'Open' && pr && (
+      {topic.phase === 'Open' && pr && !closingPR && (
         <button
           type="button"
           onClick={() => {
@@ -199,6 +201,11 @@ export function ActionBar({
         >
           Close PR
         </button>
+      )}
+      {topic.phase === 'Open' && pr && closingPR && (
+        <span className="rounded border border-amber-500/50 px-3 py-1.5 text-sm text-amber-300">
+          Closing PR #{pr.number}…
+        </span>
       )}
 
       {topic.phase === 'Open' && !actions.addressFeedback && (

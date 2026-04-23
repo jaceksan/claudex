@@ -6,7 +6,7 @@ type TopicMeta = TopicDetailBundle['topic'];
 interface Step {
   label: string;
   sublabel?: string;
-  state: 'done' | 'current' | 'future';
+  state: 'done' | 'current' | 'future' | 'cancelled';
 }
 
 function buildSteps(topic: TopicMeta, tasks: TaskRow[], pr: PR | undefined): Step[] {
@@ -36,16 +36,17 @@ function buildSteps(topic: TopicMeta, tasks: TaskRow[], pr: PR | undefined): Ste
   });
 
   // PR opened step
-  const prDone = phase === 'Open' || phase === 'Merged' || phase === 'Closed';
-  if (phase === 'Draft' && !topic.acceptedAttemptId) {
-    steps.push({ label: 'PR opened', state: 'future' });
-  } else if (phase === 'Draft') {
+  if (phase === 'Draft') {
     steps.push({ label: 'PR opened', state: 'future' });
   } else {
+    let reviewState: Step['state'];
+    if (phase === 'Merged') reviewState = 'done';
+    else if (phase === 'Closed') reviewState = 'cancelled';
+    else reviewState = 'current'; // Open
     steps.push({
       label: 'Under review',
       sublabel: pr ? `PR #${pr.number}` : undefined,
-      state: prDone && phase !== 'Merged' && phase !== 'Closed' ? 'current' : prDone ? 'done' : 'future',
+      state: reviewState,
     });
   }
 
@@ -63,11 +64,12 @@ function buildSteps(topic: TopicMeta, tasks: TaskRow[], pr: PR | undefined): Ste
     steps.push({ label: `${running.length} task${running.length > 1 ? 's' : ''} running`, state: 'current' });
   }
 
-  // Merge step
-  steps.push({
-    label: 'Merge',
-    state: phase === 'Merged' ? 'done' : 'future',
-  });
+  // Terminal step: Merge on happy path, Closed-without-merge on the cancelled path.
+  if (phase === 'Closed') {
+    steps.push({ label: 'PR closed without merging', state: 'cancelled' });
+  } else {
+    steps.push({ label: 'Merge', state: phase === 'Merged' ? 'done' : 'future' });
+  }
 
   return steps;
 }
@@ -78,6 +80,9 @@ function StepIcon({ state }: { state: Step['state'] }) {
   }
   if (state === 'current') {
     return <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-xs text-white">●</span>;
+  }
+  if (state === 'cancelled') {
+    return <span className="flex h-5 w-5 items-center justify-center rounded-full bg-zinc-700 text-xs text-zinc-300">✕</span>;
   }
   return <span className="flex h-5 w-5 items-center justify-center rounded-full border border-zinc-700 text-xs text-zinc-600">○</span>;
 }
@@ -101,7 +106,7 @@ export function Timeline({
           <li key={i} className="flex items-start gap-2">
             <StepIcon state={step.state} />
             <div>
-              <div className={`text-sm ${step.state === 'future' ? 'text-zinc-500' : 'text-zinc-100'}`}>
+              <div className={`text-sm ${step.state === 'future' ? 'text-zinc-500' : step.state === 'cancelled' ? 'text-zinc-400 line-through decoration-zinc-600' : 'text-zinc-100'}`}>
                 {step.label}
               </div>
               {step.sublabel && (
