@@ -41,8 +41,24 @@ export type TopicServerMessage =
   | { type: 'server.repo.state'; payload: { repos: RepoRow[] } }
   | { type: 'server.topic.detail'; payload: TopicDetailBundle }
   | { type: 'server.topic.branchPreview'; payload: {
+      /** The final branch name we'd actually use — already disambiguated if
+       *  the template-rendered name collided with an existing branch or an
+       *  active topic. */
       branch: string;
+      /** When set, the template rendered `<disambiguatedFrom>` but it was
+       *  already taken (by a branch on disk or an archived topic still
+       *  holding the name), so claudex suffixed a numeric counter and will
+       *  use `branch` instead. UI renders this as a neutral note — no
+       *  conflict styling. */
+      disambiguatedFrom: string | null;
+      /** True only when the user forced a specific name via `branchOverride`
+       *  and that exact name still collides locally. Auto-disambiguated
+       *  branches always report false. */
       localBranchExists: boolean;
+      /** Set when `branch` collides with a non-archived topic. Archived
+       *  (Merged/Closed) topics never populate this field — they're not a
+       *  real reuse conflict, and disambiguation will have already picked
+       *  a free name. */
       duplicateTopic: { id: string; title: string } | null;
     } }
   | { type: 'server.session.siblings'; payload: { sessionId: string; topicId: string | null; siblings: SiblingRow[] } }

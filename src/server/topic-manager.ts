@@ -54,6 +54,48 @@ export interface CreateTopicInput {
 export class TopicManager {
   constructor(private d: TopicManagerDeps) {}
 
+  /** True if `branch` exists as a local ref in `repoPath`. Best-effort — a
+   *  failing `git branch --list` is treated as "doesn't exist" so callers
+   *  don't spuriously bail out; real collisions would surface again at
+   *  `git branch <name>` create time. */
+  async branchExistsLocally(repoPath: string, branch: string): Promise<boolean> {
+    try {
+      const out = (await this.d.git(['branch', '--list', branch], repoPath)).trim();
+      return out.length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Resolve a template-rendered branch name against collisions with git refs
+   *  and active topics by appending `-2`, `-3`, … until a free slot is found.
+   *  Archived (Merged/Closed) topics do *not* block — their branches are
+   *  historical, and a new topic reusing the same slug should just get a
+   *  numeric suffix. Returns the resolved name and, when disambiguation
+   *  actually happened, the original rendered name for UI messaging. */
+  async resolveTopicBranch(repoId: string, candidate: string): Promise<{ branch: string; disambiguatedFrom: string | null }> {
+    const repo = this.d.repos.getById(repoId);
+    if (!repo) throw new Error(`repo ${repoId} not found`);
+    const activeSlotTaken = (branch: string): boolean => {
+      const row = this.d.db.prepare(
+        "SELECT 1 FROM topic WHERE repo_id=? AND topic_branch=? AND phase NOT IN ('Merged','Closed')",
+      ).get(repoId, branch);
+      return !!row;
+    };
+
+    const firstCollides = activeSlotTaken(candidate) || (await this.branchExistsLocally(repo.path, candidate));
+    if (!firstCollides) return { branch: candidate, disambiguatedFrom: null };
+
+    // Walk -2, -3, … up to a sane cap — ten attempts is generous; if we
+    // somehow run past that there's a bigger bug, better to surface it.
+    for (let n = 2; n <= 20; n++) {
+      const trial = `${candidate}-${n}`;
+      const collides = activeSlotTaken(trial) || (await this.branchExistsLocally(repo.path, trial));
+      if (!collides) return { branch: trial, disambiguatedFrom: candidate };
+    }
+    throw new Error(`could not find a free branch name near ${candidate} (tried ${candidate}-2 through ${candidate}-20)`);
+  }
+
   async create(input: CreateTopicInput) {
     const repo = this.d.repos.getById(input.repoId);
     if (!repo) throw new Error(`repo ${input.repoId} not found`);
@@ -69,6 +111,9 @@ export class TopicManager {
 
     let topicBranch: string;
     if (input.branchOverride?.trim()) {
+      // Explicit override: the user typed a specific name, so don't silently
+      // mutate it. Collisions surface at `git branch` create time with an
+      // actionable error.
       topicBranch = input.branchOverride.trim();
     } else {
       const ghUser = await this.d.githubLogin();
@@ -76,7 +121,10 @@ export class TopicManager {
         gh_user: ghUser, ticket: input.ticketKey ?? '', slug,
         type: input.type ?? '', project: input.project ?? '',
       };
-      topicBranch = renderBranchTemplate(repo.branchTemplate, branchCtx);
+      const rendered = renderBranchTemplate(repo.branchTemplate, branchCtx);
+      // Auto-disambiguate: if the rendered name collides with an existing
+      // local ref or another active topic, pick the next free -N.
+      topicBranch = (await this.resolveTopicBranch(repo.id, rendered)).branch;
     }
 
     await this.d.git(['fetch', repo.canonicalRemote, repo.defaultBranch], repo.path);

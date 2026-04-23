@@ -51,7 +51,11 @@ function buildTopicState(deps: TopicDeps): ServerEnvelope {
   const repoList = deps.repos.list();
   const topicCards: TopicCard[] = [];
   for (const repo of repoList) {
-    const repoTopics = deps.topics.listByRepo(repo.id);
+    // includeArchived: archived topics (Merged/Closed) render in a collapsed
+    // section on the dashboard so the user can still review + explicitly
+    // delete them. Without this they'd vanish from the UI as soon as a PR
+    // lands, which confuses users who expect to see "what I shipped today".
+    const repoTopics = deps.topics.listByRepo(repo.id, { includeArchived: true });
     for (const topic of repoTopics) {
       const taskSummary = topicTaskSummary(deps.tasks, deps.rawDb, topic.id);
       const lastTask = deps.tasks.listByTopic(topic.id)[0];
@@ -427,24 +431,44 @@ export class WsHub {
           const repo = td.repos.getById(repoId);
           if (!repo) return this.sendError(ws, 'unknown repo');
           (async () => {
-            let branch = override?.trim() ?? '';
-            if (!branch) {
+            const isOverride = !!override?.trim();
+            let branch: string;
+            let disambiguatedFrom: string | null = null;
+            if (isOverride) {
+              branch = override!.trim();
+            } else {
               const { slugify } = await import('../slug.js');
               const { renderBranchTemplate } = await import('../branch-template.js');
               const { getOrFetchGithubLogin } = await import('../identity.js');
               const { GitHubAdapter } = await import('../vcs/github.js');
               const ghUser = await getOrFetchGithubLogin(td.rawDb, new GitHubAdapter()).catch(() => '');
-              branch = renderBranchTemplate(repo.branchTemplate, {
+              const rendered = renderBranchTemplate(repo.branchTemplate, {
                 gh_user: ghUser, ticket: ticketKey ?? '', slug: slugify(title),
                 type: '', project: '',
               });
+              // Mirror TopicManager.create's resolution so preview === create.
+              const resolved = await td.topicManager.resolveTopicBranch(repo.id, rendered);
+              branch = resolved.branch;
+              disambiguatedFrom = resolved.disambiguatedFrom;
             }
-            const localExists = (await execFileP('git', ['branch', '--list', branch], { cwd: repo.path }).then((r) => r.stdout).catch(() => '')).trim() !== '';
-            const dup = td.rawDb.prepare('SELECT id, title FROM topic WHERE repo_id=? AND topic_branch=?').get(repo.id, branch) as { id: string; title: string } | undefined;
+            // After disambiguation the resolved branch is guaranteed free, so
+            // both collision fields would be false. For an explicit override
+            // we still need to report the real state so the UI can warn.
+            const localExists = isOverride
+              ? (await execFileP('git', ['branch', '--list', branch], { cwd: repo.path }).then((r) => r.stdout).catch(() => '')).trim() !== ''
+              : false;
+            // Archived topics (Merged/Closed) don't count — their branches are
+            // historical and reusing the slug is legitimate.
+            const dup = isOverride
+              ? td.rawDb.prepare(
+                  "SELECT id, title FROM topic WHERE repo_id=? AND topic_branch=? AND phase NOT IN ('Merged','Closed')",
+                ).get(repo.id, branch) as { id: string; title: string } | undefined
+              : undefined;
             this.send(ws, {
               type: 'server.topic.branchPreview',
               payload: {
                 branch,
+                disambiguatedFrom,
                 localBranchExists: localExists,
                 duplicateTopic: dup ?? null,
               },

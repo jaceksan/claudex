@@ -83,6 +83,7 @@ export function ActionBar({
   onPush,
   onClosePR,
   onSync,
+  onDeleteTopic,
   creatingPR = false,
   closingPR = false,
 }: {
@@ -98,6 +99,7 @@ export function ActionBar({
   onPush: () => void;
   onClosePR: () => void;
   onSync: () => void;
+  onDeleteTopic: () => void;
   creatingPR?: boolean;
   closingPR?: boolean;
 }) {
@@ -105,8 +107,16 @@ export function ActionBar({
 
   if (topic.phase === 'Merged' || topic.phase === 'Closed') {
     return (
-      <div className="border-t border-zinc-800 bg-zinc-950 px-4 py-3 flex gap-3">
+      <div className="border-t border-zinc-800 bg-zinc-950 px-4 py-3 flex items-center gap-3">
         <span className="text-xs text-zinc-500">Topic {topic.phase.toLowerCase()}.</span>
+        <button
+          type="button"
+          onClick={onDeleteTopic}
+          className="ml-auto rounded border border-red-700/60 px-3 py-1 text-xs text-red-300 hover:border-red-500 hover:text-red-200"
+          title="Delete this archived topic — removes worktrees, branches, and DB rows. The GitHub PR itself is never touched."
+        >
+          Delete topic
+        </button>
       </div>
     );
   }

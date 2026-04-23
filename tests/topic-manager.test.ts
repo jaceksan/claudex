@@ -64,6 +64,85 @@ describe('TopicManager.create', () => {
     })).rejects.toThrow(/not found/);
   });
 
+  it('auto-disambiguates the branch name when the rendered default is taken by an existing local branch', async () => {
+    // Simulate a pre-existing ref with the template-rendered name + its -2
+    // disambiguation, forcing a walk up to -3. The stub git returns non-empty
+    // only for `branch --list <existingName>`, so branchExistsLocally reports
+    // true exactly for these two.
+    const existing = new Set(['jaceksan/ABC-123__fix-login-copy', 'jaceksan/ABC-123__fix-login-copy-2']);
+    const newMgr = new TopicManager({
+      db, repos, topics, tasks,
+      git: async (args) => {
+        if (args[0] === 'branch' && args[1] === '--list') return existing.has(args[2]!) ? `  ${args[2]}\n` : '';
+        return '';
+      },
+      createWorktree: (cwd, id, opts) => ({ path: `/tmp/wt/${id}`, origin: cwd, branch: opts.branch }),
+      spawnSession: async () => ({ id: 'sess_dup' }),
+      now: () => 1700000000000,
+      githubLogin: async () => 'jaceksan',
+    });
+    const repo = repos.register({
+      path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin', defaultBranch: 'main',
+    });
+    const { topic } = await newMgr.create({
+      repoId: repo.id, template: 'standard', title: 'Fix login copy', ticketKey: 'ABC-123',
+    });
+    expect(topic.topicBranch).toBe('jaceksan/ABC-123__fix-login-copy-3');
+  });
+
+  it('auto-disambiguates when an ACTIVE topic already owns the rendered branch, but does NOT count archived topics', async () => {
+    const repo = repos.register({
+      path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin', defaultBranch: 'main',
+    });
+    // First create an active topic — takes the base slot.
+    const first = await mgr.create({
+      repoId: repo.id, template: 'standard', title: 'Fix login copy', ticketKey: 'ABC-123',
+    });
+    // Archive a second topic that also holds a suffixed name — should NOT
+    // block the disambiguator, so the next create walks right past it.
+    const archived = topics.create({
+      repoId: repo.id, phase: 'Merged', template: 'standard',
+      title: 'Old fix', slug: 'old-fix', ticketKey: 'ABC-0',
+      topicBranch: 'jaceksan/ABC-123__fix-login-copy-2',
+    });
+    expect(archived.phase).toBe('Merged');
+
+    const second = await mgr.create({
+      repoId: repo.id, template: 'standard', title: 'Fix login copy', ticketKey: 'ABC-123',
+    });
+    // -2 is held only by an archived topic (no local git ref in this stub),
+    // so it's free for reuse. The active topic sits on the base, so the new
+    // topic takes -2.
+    expect(first.topic.topicBranch).toBe('jaceksan/ABC-123__fix-login-copy');
+    expect(second.topic.topicBranch).toBe('jaceksan/ABC-123__fix-login-copy-2');
+  });
+
+  it('does NOT auto-disambiguate when the user supplies an explicit branchOverride', async () => {
+    // Override means "I want exactly this name" — if it collides, surface
+    // that loudly rather than silently renaming.
+    const existing = new Set(['my-branch']);
+    const newMgr = new TopicManager({
+      db, repos, topics, tasks,
+      git: async (args) => {
+        if (args[0] === 'branch' && args[1] === '--list') return existing.has(args[2]!) ? `  ${args[2]}\n` : '';
+        // Let the `git branch <new> <base>` creation call through; the test
+        // only cares that the resolved name equals the override.
+        return '';
+      },
+      createWorktree: (cwd, id, opts) => ({ path: `/tmp/wt/${id}`, origin: cwd, branch: opts.branch }),
+      spawnSession: async () => ({ id: 'sess_over' }),
+      now: () => 1700000000000,
+      githubLogin: async () => 'jaceksan',
+    });
+    const repo = repos.register({
+      path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin', defaultBranch: 'main',
+    });
+    const { topic } = await newMgr.create({
+      repoId: repo.id, template: 'standard', title: 'x', branchOverride: 'my-branch',
+    });
+    expect(topic.topicBranch).toBe('my-branch'); // no -2 suffix
+  });
+
   it('addAttempt derives the branch from the task title', async () => {
     const repo = repos.register({
       path: '/tmp/r', vcsKind: 'github', canonicalRemote: 'origin', forkRemote: 'origin',

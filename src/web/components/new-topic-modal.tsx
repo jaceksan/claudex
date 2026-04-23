@@ -37,6 +37,7 @@ const TEMPLATES = [
 
 type Preview = {
   branch: string;
+  disambiguatedFrom: string | null;
   localBranchExists: boolean;
   duplicateTopic: { id: string; title: string } | null;
 } | null;
@@ -178,7 +179,12 @@ export function NewTopicModal({ onClose }: { onClose: () => void }) {
               </button>
             </div>
             {preview && !conflict && (
-              <div className="mt-1 text-xs text-emerald-300">✓ Will create <span className="font-mono">{preview.branch}</span></div>
+              <div className="mt-1 text-xs text-emerald-300">
+                ✓ Will create <span className="font-mono">{preview.branch}</span>
+                {preview.disambiguatedFrom && (
+                  <span className="text-zinc-400"> (auto-renamed from <span className="font-mono">{preview.disambiguatedFrom}</span>; the original name is taken by an existing branch or archived topic)</span>
+                )}
+              </div>
             )}
             {preview?.duplicateTopic && (
               <div className="mt-1 text-xs text-red-300">

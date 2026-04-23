@@ -98,6 +98,11 @@ export default function TopicPage({ id }: { id: string }) {
     setClosingPR(true);
     send({ type: 'client.pr.close', payload: { topicId: id } });
   }
+  function handleDeleteTopic() {
+    if (!confirm(`Delete "${detail?.topic.title ?? 'this topic'}" and all its tasks? This kills any running sessions, removes worktrees, and drops the topic branch. The GitHub PR itself is left alone.`)) return;
+    send({ type: 'client.topic.delete', payload: { topicId: id } });
+    navigate('/');
+  }
   function handleSuppressCheck(checkName: string, reason?: string) {
     send({ type: 'client.repo.suppressCheck', payload: { repoId: topic.repoId, checkName, reason } });
   }
@@ -218,6 +223,7 @@ export default function TopicPage({ id }: { id: string }) {
         onPush={handlePushTopic}
         onClosePR={handleClosePR}
         onSync={handleSyncTopic}
+        onDeleteTopic={handleDeleteTopic}
         creatingPR={creatingPR}
         closingPR={closingPR}
       />
